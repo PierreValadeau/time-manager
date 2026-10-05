@@ -1,0 +1,143 @@
+// Time Manager - schéma Prisma (PostgreSQL)
+//
+// À placer dans backend/prisma/schema.prisma
+//
+// 1. L'en-tête generator/datasource ci-dessous suit la forme classique.
+//    Selon la version de Prisma installée, la connexion peut se déclarer
+//    dans prisma.config.ts : gardez l'en-tête généré par `npx prisma init`
+//    et ne copiez que les enums et les modèles.
+//
+// 2. Deux contraintes ne s'expriment pas dans Prisma. Après
+//    `npx prisma migrate dev --create-only --name init`, ajoutez à la fin
+//    du fichier migration.sql généré :
+//
+//    ALTER TABLE "clocks"
+//      ADD CONSTRAINT "clocks_out_after_in"
+//      CHECK ("clock_out" IS NULL OR "clock_out" > "clock_in");
+//
+//    CREATE UNIQUE INDEX "clocks_one_open_session_per_user"
+//      ON "clocks" ("user_id")
+//      WHERE "clock_out" IS NULL;
+//
+//    puis lancez `npx prisma migrate dev`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  employee
+  manager
+
+  @@map("user_role")
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  firstName    String   @map("first_name") @db.VarChar(100)
+  lastName     String   @map("last_name") @db.VarChar(100)
+  // Toujours enregistré en minuscules par le backend
+  email        String   @unique @db.VarChar(255)
+  phoneNumber  String?  @map("phone_number") @db.VarChar(20)
+  // Vide tant que le salarié n'a pas défini son mot de passe
+  passwordHash String?  @map("password_hash")
+  // Renseigné à la première connexion Microsoft
+  microsoftId  String?  @unique @map("microsoft_id")
+  role         UserRole @default(employee)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  managedTeams        Team[]               @relation("TeamManager")
+  memberships         TeamMember[]
+  clocks              Clock[]              @relation("ClockOwner")
+  clockCorrections    Clock[]              @relation("ClockCorrector")
+  refreshTokens       RefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+
+  @@map("users")
+}
+
+model Team {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  description String?
+  managerId   String   @map("manager_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Restrict : impossible de supprimer un manager qui a encore une équipe
+  manager User         @relation("TeamManager", fields: [managerId], references: [id], onDelete: Restrict)
+  members TeamMember[]
+
+  @@index([managerId])
+  @@map("teams")
+}
+
+model TeamMember {
+  teamId   String   @map("team_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model Clock {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  clockIn          DateTime  @map("clock_in") @db.Timestamptz(6)
+  // Vide tant que la session est ouverte
+  clockOut         DateTime? @map("clock_out") @db.Timestamptz(6)
+  // Manager auteur d'une correction manuelle, avec son motif
+  correctedById    String?   @map("corrected_by") @db.Uuid
+  correctionReason String?   @map("correction_reason")
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Cascade : à revoir selon la décision sur la suppression des comptes
+  // (suppression réelle ou anonymisation avec conservation des pointages)
+  user        User  @relation("ClockOwner", fields: [userId], references: [id], onDelete: Cascade)
+  correctedBy User? @relation("ClockCorrector", fields: [correctedById], references: [id], onDelete: SetNull)
+
+  @@index([userId, clockIn])
+  @@map("clocks")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  // Hachage SHA-256 du jeton, jamais le jeton en clair
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  // Hachage SHA-256 du jeton, jamais le jeton en clair
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
