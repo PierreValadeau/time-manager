@@ -51,6 +51,8 @@ model User {
   role         UserRole @default(employee)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  // Renseigné quand le compte est anonymisé (DELETE /users/:id)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
 
   managedTeams        Team[]               @relation("TeamManager")
   memberships         TeamMember[]
@@ -102,10 +104,11 @@ model Clock {
   correctionReason String?   @map("correction_reason")
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  
 
   // Cascade : à revoir selon la décision sur la suppression des comptes
   // (suppression réelle ou anonymisation avec conservation des pointages)
-  user        User  @relation("ClockOwner", fields: [userId], references: [id], onDelete: Cascade)
+  user        User  @relation("ClockOwner", fields: [userId], references: [id], onDelete: Restrict)
   correctedBy User? @relation("ClockCorrector", fields: [correctedById], references: [id], onDelete: SetNull)
 
   @@index([userId, clockIn])
