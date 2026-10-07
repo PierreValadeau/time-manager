@@ -1,0 +1,40 @@
+import type { ErrorRequestHandler } from 'express';
+import AppError from '../errors/AppError';
+
+const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
+  // Réponse déjà partiellement envoyée : on laisse Express couper la connexion
+  if (res.headersSent) {
+    next(err);
+    return;
+  }
+
+  if (err instanceof AppError) {
+    res.status(err.status).json({
+      error: {
+        code: err.code,
+        message: err.message,
+        ...(err.details && { details: err.details }),
+      },
+    });
+    return;
+  }
+
+  // JSON malformé, levé par express.json()
+  if (err?.type === 'entity.parse.failed') {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: "Le corps de la requête n'est pas un JSON valide",
+      },
+    });
+    return;
+  }
+
+  // Erreur imprévue : détail dans les logs serveur, rien de sensible au client
+  console.error(err);
+  res.status(500).json({
+    error: { code: 'INTERNAL_ERROR', message: 'Erreur interne du serveur' },
+  });
+};
+
+export default errorHandler;
