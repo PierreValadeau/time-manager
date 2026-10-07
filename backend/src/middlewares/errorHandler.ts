@@ -19,12 +19,12 @@ const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
     return;
   }
 
-  // JSON malformé, levé par express.json()
-  if (err?.type === 'entity.parse.failed') {
+  // Erreurs client levées par express.json() : JSON malformé, corps trop gros, charset non supporté…
+  if (err?.expose === true && err.status >= 400 && err.status < 500) {
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: "Le corps de la requête n'est pas un JSON valide",
+        message: 'Le corps de la requête est invalide',
       },
     });
     return;
