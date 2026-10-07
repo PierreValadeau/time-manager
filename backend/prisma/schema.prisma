@@ -33,6 +33,7 @@ datasource db {
 enum UserRole {
   employee
   manager
+  admin
 
   @@map("user_role")
 }
