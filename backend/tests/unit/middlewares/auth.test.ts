@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import AppError from '../../../src/errors/AppError';
 import errorHandler from '../../../src/middlewares/errorHandler';
-import { authenticate, authorize } from '../../../src/middlewares/auth';
+import { authenticate, requireRole } from '../../../src/middlewares/auth';
 import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
@@ -124,11 +124,11 @@ describe('authenticate in an Express app', () => {
   });
 });
 
-describe('authorize', () => {
-  const runAs = (role: 'employee' | 'manager' | 'admin' | null, ...allowed: Parameters<typeof authorize>) => {
+describe('requireRole', () => {
+  const runAs = (role: 'employee' | 'manager' | 'admin' | null, ...allowed: Parameters<typeof requireRole>) => {
     const next = vi.fn();
     const req = (role ? { user: { id: user.id, role } } : {}) as Request;
-    authorize(...allowed)(req, {} as Response, next);
+    requireRole(...allowed)(req, {} as Response, next);
     return next;
   };
 
@@ -141,6 +141,7 @@ describe('authorize', () => {
   });
 
   it.each([
+    ['employee', ['manager']],
     ['employee', ['manager', 'admin']],
     ['manager', ['admin']],
   ] as const)('forbids a %s when only %j are allowed (403)', (role, allowed) => {
@@ -154,6 +155,6 @@ describe('authorize', () => {
   });
 
   it('refuses to be declared without any role', () => {
-    expect(() => authorize()).toThrow('at least one role');
+    expect(() => requireRole()).toThrow('at least one role');
   });
 });

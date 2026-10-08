@@ -17,12 +17,12 @@ export const authenticate: RequestHandler = (req, _res, next) => {
   next();
 };
 
-// Role check, always mounted after authenticate: router.post('/', authenticate, authorize('manager', 'admin'), ...)
-// Scope rules ("manager of the team", "self"...) depend on the resource and stay in the services
-export const authorize = (...roles: UserRole[]): RequestHandler => {
-  // authorize() with no role would silently lock the route for everyone
+// Role check, always mounted after authenticate: router.post('/', authenticate, requireRole('manager', 'admin'), ...)
+// It only checks the role: scope rules ("self", "manager of the team"...) are in services/scope.service.ts
+export const requireRole = (...roles: UserRole[]): RequestHandler => {
+  // requireRole() with no role would silently lock the route for everyone
   if (roles.length === 0) {
-    throw new Error('authorize() needs at least one role');
+    throw new Error('requireRole() needs at least one role');
   }
 
   return (req, _res, next) => {
