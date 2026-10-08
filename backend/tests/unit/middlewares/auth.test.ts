@@ -5,7 +5,7 @@ import cookieParser from 'cookie-parser';
 import jwt from 'jsonwebtoken';
 import AppError from '../../../src/errors/AppError';
 import errorHandler from '../../../src/middlewares/errorHandler';
-import { authenticate } from '../../../src/middlewares/auth';
+import { authenticate, authorize } from '../../../src/middlewares/auth';
 import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
@@ -121,5 +121,39 @@ describe('authenticate in an Express app', () => {
       status: 401,
       body: { error: { code: 'UNAUTHENTICATED', message: 'Session absente ou expirée' } },
     });
+  });
+});
+
+describe('authorize', () => {
+  const runAs = (role: 'employee' | 'manager' | 'admin' | null, ...allowed: Parameters<typeof authorize>) => {
+    const next = vi.fn();
+    const req = (role ? { user: { id: user.id, role } } : {}) as Request;
+    authorize(...allowed)(req, {} as Response, next);
+    return next;
+  };
+
+  it.each([
+    ['manager', ['manager', 'admin']],
+    ['admin', ['manager', 'admin']],
+    ['employee', ['employee']],
+  ] as const)('lets a %s through when %j are allowed', (role, allowed) => {
+    expect(runAs(role, ...allowed)).toHaveBeenCalledWith();
+  });
+
+  it.each([
+    ['employee', ['manager', 'admin']],
+    ['manager', ['admin']],
+  ] as const)('forbids a %s when only %j are allowed (403)', (role, allowed) => {
+    const next = runAs(role, ...allowed);
+    expect(next).toHaveBeenCalledOnce();
+    expect(next.mock.calls[0][0]).toMatchObject({ status: 403, code: 'FORBIDDEN' });
+  });
+
+  it('rejects with 401 when mounted without authenticate', () => {
+    expectUnauthenticated(runAs(null, 'manager'));
+  });
+
+  it('refuses to be declared without any role', () => {
+    expect(() => authorize()).toThrow('at least one role');
   });
 });
