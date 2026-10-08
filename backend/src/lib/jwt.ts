@@ -3,6 +3,9 @@ import { UserRole } from '@prisma/client';
 
 export type AccessTokenPayload = { id: string; role: UserRole };
 
+// Name of the httpOnly cookie that carries the access token (set at login, read by authenticate)
+export const ACCESS_TOKEN_COOKIE = 'access_token';
+
 // Contract, section 1: the access token lives 15 minutes
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 // Pinned algorithm: a token claiming another one (e.g. "none") is rejected
