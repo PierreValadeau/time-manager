@@ -60,6 +60,11 @@ describe('sessionStatus', () => {
   it('returns anomaly for a session open for more than 14 h', () => {
     expect(sessionStatus(session('2026-10-06T21:59:00Z', null), NOW, 14)).toBe('anomaly');
   });
+
+  it('returns open for a session open for exactly 14 h', () => {
+    // The contract says "more than 14 hours": 14 h sharp is still open
+    expect(sessionStatus(session('2026-10-06T22:00:00Z', null), NOW, 14)).toBe('open');
+  });
 });
 
 describe('periodKey', () => {
@@ -77,6 +82,10 @@ describe('periodKey', () => {
   it('uses the ISO year at the turn of the year', () => {
     // Friday 1 January 2027 belongs to week 53 of 2026
     expect(periodKey(new Date('2027-01-01T10:00:00Z'), 'week', TZ)).toBe('2026-W53');
+  });
+
+  it('throws on an invalid timezone', () => {
+    expect(() => periodKey(new Date('2026-10-05T08:00:00Z'), 'day', 'Europe/Pariss')).toThrow();
   });
 });
 
@@ -118,6 +127,16 @@ describe('summarizeSessions', () => {
     const result = summarizeSessions([session('2026-10-05T20:00:00Z', '2026-10-06T00:00:00Z')], options());
     expect(result.periods).toHaveLength(1);
     expect(result.periods[0]).toMatchObject({ period: '2026-10-05', workedMinutes: 240 });
+  });
+
+  it('keeps a Sunday-night session spanning midnight in its clock-in week', () => {
+    // Sunday 22:00 → Monday 02:00 Paris time
+    const result = summarizeSessions(
+      [session('2026-10-11T20:00:00Z', '2026-10-12T00:00:00Z')],
+      options({ groupBy: 'week' }),
+    );
+    expect(result.periods).toHaveLength(1);
+    expect(result.periods[0]).toMatchObject({ period: '2026-W41', workedMinutes: 240 });
   });
 
   it('groups by ISO week', () => {

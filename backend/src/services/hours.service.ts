@@ -43,6 +43,7 @@ export function sessionStatus(
 }
 
 // Duration rounded down to the minute; an open session counts until `now`.
+// Computed on UTC timestamps, so a DST change has no effect.
 export function sessionMinutes(session: ClockSession, now: Date): number {
   const end = session.clockOut ?? now;
   const ms = end.getTime() - session.clockIn.getTime();
@@ -52,7 +53,8 @@ export function sessionMinutes(session: ClockSession, now: Date): number {
 // Local day (YYYY-MM-DD) or ISO week (YYYY-Www, starting Monday) of the clock-in
 export function periodKey(date: Date, groupBy: GroupBy, timezone: string): string {
   const local = DateTime.fromJSDate(date, { zone: timezone });
-  return groupBy === 'day' ? local.toISODate()! : local.toFormat("kkkk-'W'WW");
+  if (!local.isValid) throw new Error(`Invalid date or timezone: ${timezone}`);
+  return groupBy === 'day' ? local.toISODate() : local.toFormat("kkkk-'W'WW");
 }
 
 export function summarizeSessions(sessions: ClockSession[], options: SummaryOptions): HoursSummary {
