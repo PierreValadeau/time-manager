@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 import { Prisma } from '@prisma/client';
 import prisma from '../../../src/lib/prisma';
 import { sendSetupLink } from '../../../src/services/mail.service';
-import { createUser, type Actor } from '../../../src/services/user.service';
+import { createUser } from '../../../src/services/user.service';
+import type { Caller } from '../../../src/services/scope.service';
 import type { CreateUserInput } from '../../../src/schemas/user.schema';
 
 // No database: Prisma and the mailer are replaced by mocks
@@ -13,9 +14,9 @@ vi.mock('../../../src/services/mail.service', () => ({ sendSetupLink: vi.fn() })
 const createMock = prisma.user.create as unknown as Mock;
 const sendSetupLinkMock = sendSetupLink as unknown as Mock;
 
-const admin: Actor = { id: 'admin-id', role: 'admin' };
-const manager: Actor = { id: 'manager-id', role: 'manager' };
-const employee: Actor = { id: 'employee-id', role: 'employee' };
+const admin: Caller = { id: 'admin-id', role: 'admin' };
+const manager: Caller = { id: 'manager-id', role: 'manager' };
+const employee: Caller = { id: 'employee-id', role: 'employee' };
 
 const input: CreateUserInput = {
   firstName: 'Jean',

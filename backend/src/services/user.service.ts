@@ -3,9 +3,8 @@ import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
+import type { Caller } from './scope.service';
 import type { CreateUserInput } from '../schemas/user.schema';
-
-export type Actor = { id: string; role: UserRole };
 
 // Roles each caller may assign (contract, section 2); admin is never assignable
 const CREATABLE_ROLES: Record<UserRole, UserRole[]> = {
@@ -45,7 +44,7 @@ export const toReducedUser = ({ id, firstName, lastName, role }: UserRecord) => 
   role,
 });
 
-export async function createUser(actor: Actor, input: CreateUserInput) {
+export async function createUser(actor: Caller, input: CreateUserInput) {
   if (!CREATABLE_ROLES[actor.role].includes(input.role)) {
     throw new AppError(403, 'FORBIDDEN', `Vous ne pouvez pas créer un utilisateur de rôle ${input.role}`);
   }
