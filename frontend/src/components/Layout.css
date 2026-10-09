@@ -1,0 +1,169 @@
+.app-shell {
+  display: flex;
+  height: 100svh;
+  overflow: hidden;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  z-index: 50;
+}
+
+.skip-link:focus {
+  left: 16px;
+  top: 16px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+/* — marque — */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  color: var(--color-accent);
+}
+
+.brand-name {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+/* — sidebar (desktop) — */
+.sidebar {
+  flex: none;
+  width: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 22px 14px;
+  background: linear-gradient(
+    180deg,
+    var(--color-surface),
+    color-mix(in srgb, var(--color-surface) 40%, var(--color-bg))
+  );
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  color: var(--color-neutral-300);
+  font: 500 14px var(--font-heading);
+  text-decoration: none;
+}
+
+.sidebar-link:hover {
+  color: var(--color-neutral-300);
+  background: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.sidebar-link.active {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+/* — contenu — */
+.app-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 32px 40px 40px;
+}
+
+.page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-date {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-500);
+}
+
+/* — barre d'onglets (mobile) — */
+.tabbar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .sidebar {
+    display: none;
+  }
+
+  main {
+    padding: calc(16px + env(safe-area-inset-top)) 16px 24px;
+  }
+
+  .page-date {
+    display: none;
+  }
+
+  .page-header h1 {
+    font-size: 20px;
+  }
+
+  .tabbar {
+    display: flex;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+    background: var(--color-surface);
+    box-shadow: 0 -1px 0 var(--color-neutral-800);
+  }
+
+  .tabbar-link {
+    flex: 1;
+    min-width: 0;
+    min-height: 52px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    color: var(--color-neutral-400);
+    font: 500 10px var(--font-body);
+    text-decoration: none;
+  }
+
+  .tabbar-link:hover {
+    color: var(--color-neutral-300);
+  }
+
+  .tabbar-link.active {
+    color: var(--color-accent);
+  }
+}
