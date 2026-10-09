@@ -72,10 +72,16 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   if (!res.ok) {
     throw await toApiError(res);
   }
-  if (res.status === 204) {
+  // 204 ou 200 sans corps : rien à décoder
+  const text = await res.text();
+  if (!text) {
     return undefined as T;
   }
-  return res.json() as Promise<T>;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError(res.status, 'INTERNAL_ERROR', 'Réponse invalide du serveur');
+  }
 }
 
 export const api = {

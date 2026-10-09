@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavLink, Outlet, useMatches } from 'react-router';
 import { ClockIcon, HouseIcon, type Icon } from '@phosphor-icons/react';
 import './Layout.css';
@@ -17,10 +18,19 @@ const todayLabel = new Intl.DateTimeFormat('fr-FR', {
   year: 'numeric',
 });
 
+const APP_NAME = 'Trinity Time';
+
+// Titre de la route courante, repris dans l'onglet : c'est lui que le lecteur d'écran annonce (WCAG 2.4.2)
 function usePageTitle(): string {
   const matches = useMatches();
   const handle = matches.at(-1)?.handle as RouteHandle | undefined;
-  return handle?.title ?? 'Trinity Time';
+  const title = handle?.title ?? APP_NAME;
+
+  useEffect(() => {
+    document.title = title === APP_NAME ? APP_NAME : `${title} · ${APP_NAME}`;
+  }, [title]);
+
+  return title;
 }
 
 function Brand() {
@@ -29,7 +39,7 @@ function Brand() {
       <span className="brand-mark" aria-hidden="true">
         <ClockIcon size={16} />
       </span>
-      <span className="brand-name">Trinity Time</span>
+      <span className="brand-name">{APP_NAME}</span>
     </div>
   );
 }
