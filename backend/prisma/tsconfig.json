@@ -5,5 +5,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["seed.ts", "../prisma.config.ts"]
+  "include": ["seed.ts", "../prisma.config.ts", "seedAdmin.ts"]
 }
