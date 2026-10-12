@@ -34,7 +34,7 @@ describe('TextField', () => {
     expect(input).not.toHaveAttribute('aria-describedby');
   });
 
-  it('makes the input required without reading the asterisk', () => {
+  it('marks the input as required', () => {
     render(<TextField label="Nom" required />);
 
     expect(screen.getByRole('textbox', { name: 'Nom' })).toBeRequired();

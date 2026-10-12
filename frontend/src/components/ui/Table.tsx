@@ -11,9 +11,9 @@ export type TableColumn<T> = {
 };
 
 export type TableProps<T> = {
-  // Table title announced by screen readers; can be hidden when already shown nearby
+  // Table title for screen readers; hidden by default since the prototype shows an h2 above the table
   caption: string;
-  hideCaption?: boolean;
+  showCaption?: boolean;
   columns: TableColumn<T>[];
   rows: T[];
   getRowKey: (row: T) => string;
@@ -24,7 +24,7 @@ function cellClass(column: Pick<TableColumn<unknown>, 'align' | 'secondary'>): s
   return [column.align === 'end' && 'align-end', column.secondary && 'col-secondary'].filter(Boolean).join(' ') || undefined;
 }
 
-function Table<T>({ caption, hideCaption = false, columns, rows, getRowKey, emptyMessage = 'Aucune donnée' }: TableProps<T>) {
+function Table<T>({ caption, showCaption = false, columns, rows, getRowKey, emptyMessage = 'Aucune donnée' }: TableProps<T>) {
   const captionId = useId();
 
   return (
@@ -32,7 +32,7 @@ function Table<T>({ caption, hideCaption = false, columns, rows, getRowKey, empt
     // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
     <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
       <table className="table">
-        <caption id={captionId} className={hideCaption ? 'visually-hidden' : undefined}>
+        <caption id={captionId} className={showCaption ? undefined : 'visually-hidden'}>
           {caption}
         </caption>
         <thead>

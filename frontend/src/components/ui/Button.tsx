@@ -1,5 +1,4 @@
 import type { ComponentPropsWithRef } from 'react';
-import { CircleNotchIcon } from '@phosphor-icons/react';
 
 type BaseProps = ComponentPropsWithRef<'button'> & {
   // Disables the button and announces it as busy while a request runs
@@ -32,7 +31,6 @@ function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
     >
-      {loading && <CircleNotchIcon size={16} className="spin" aria-hidden="true" />}
       {children}
     </button>
   );

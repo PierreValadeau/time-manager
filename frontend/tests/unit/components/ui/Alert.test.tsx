@@ -6,13 +6,10 @@ import { expectNoA11yViolations } from './axe';
 describe('Alert', () => {
   it('interrupts the screen reader for an error', async () => {
     const { container } = render(
-      <Alert tone="error" title="Connexion impossible">
-        Email ou mot de passe incorrect
-      </Alert>,
+      <Alert tone="error">Email ou mot de passe incorrect</Alert>,
     );
 
-    const alert = screen.getByRole('alert');
-    expect(alert).toHaveTextContent('Connexion impossibleEmail ou mot de passe incorrect');
+    expect(screen.getByRole('alert')).toHaveTextContent('Email ou mot de passe incorrect');
     await expectNoA11yViolations(container);
   });
 

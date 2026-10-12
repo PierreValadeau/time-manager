@@ -30,12 +30,6 @@ function Field({ label, hint, error, required, id, children }: FieldProps) {
     <div className="field">
       <label htmlFor={controlId}>
         {label}
-        {/* The asterisk is visual only; `required` on the control already announces it */}
-        {required && (
-          <span className="field-required" aria-hidden="true">
-            *
-          </span>
-        )}
       </label>
       {children({
         id: controlId,

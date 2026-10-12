@@ -5,7 +5,8 @@ export type AlertTone = 'error' | 'success' | 'info';
 
 export type AlertProps = {
   tone?: AlertTone;
-  title?: ReactNode;
+  // Overrides the tone icon, e.g. an envelope for "an activation link will be sent"
+  icon?: Icon;
   children: ReactNode;
 };
 
@@ -15,18 +16,16 @@ const ICONS: Record<AlertTone, Icon> = {
   info: InfoIcon,
 };
 
-// Inline message: an error interrupts the screen reader, other tones wait their turn
-function Alert({ tone = 'info', title, children }: AlertProps) {
-  const ToneIcon = ICONS[tone];
+// Inline message as in the prototype: one icon + text line, never color alone.
+// An error interrupts the screen reader, other tones wait their turn.
+function Alert({ tone = 'info', icon, children }: AlertProps) {
+  const ToneIcon = icon ?? ICONS[tone];
 
   return (
-    <div className={`alert alert-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
-      <ToneIcon size={18} aria-hidden="true" />
-      <div>
-        {title && <p className="alert-title">{title}</p>}
-        <div>{children}</div>
-      </div>
-    </div>
+    <p className={`alert alert-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
+      <ToneIcon size={16} aria-hidden="true" />
+      <span>{children}</span>
+    </p>
   );
 }
 

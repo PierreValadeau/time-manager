@@ -34,10 +34,16 @@ describe('Table', () => {
     expect(screen.getByRole('region', { name: 'Mes heures' })).toHaveAttribute('tabindex', '0');
   });
 
-  it('keeps the caption for screen readers when hidden', () => {
-    render(<Table caption="Mes heures" hideCaption columns={COLUMNS} rows={DAYS} getRowKey={(d) => d.date} />);
+  it('hides the caption visually by default but keeps it for screen readers', () => {
+    render(<Table caption="Mes heures" columns={COLUMNS} rows={DAYS} getRowKey={(d) => d.date} />);
 
     expect(screen.getByRole('table', { name: 'Mes heures' }).querySelector('caption')).toHaveClass('visually-hidden');
+  });
+
+  it('can show the caption', () => {
+    render(<Table caption="Mes heures" showCaption columns={COLUMNS} rows={DAYS} getRowKey={(d) => d.date} />);
+
+    expect(screen.getByRole('table', { name: 'Mes heures' }).querySelector('caption')).not.toHaveClass('visually-hidden');
   });
 
   it('applies alignment and mobile hiding to headers and cells alike', () => {
