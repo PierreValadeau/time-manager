@@ -65,6 +65,20 @@ describe('sessionStatus', () => {
     // The contract says "more than 14 hours": 14 h sharp is still open
     expect(sessionStatus(session('2026-10-06T22:00:00Z', null), NOW, 14)).toBe('open');
   });
+
+  it('keeps a forgotten session as anomaly once closed by the next clock-in', () => {
+    // Clocked in Monday morning, closed by the clock-in of Tuesday morning
+    expect(sessionStatus(session('2026-10-05T07:00:00Z', '2026-10-06T07:00:00Z'), NOW, 14)).toBe('anomaly');
+  });
+
+  it('returns closed for a long session corrected by a manager', () => {
+    const corrected = { ...session('2026-10-05T07:00:00Z', '2026-10-05T22:00:00Z'), correctedById: 'manager-id' };
+    expect(sessionStatus(corrected, NOW, 14)).toBe('closed');
+  });
+
+  it('returns closed for a session of exactly 14 h', () => {
+    expect(sessionStatus(session('2026-10-05T07:00:00Z', '2026-10-05T21:00:00Z'), NOW, 14)).toBe('closed');
+  });
 });
 
 describe('periodKey', () => {
@@ -165,6 +179,17 @@ describe('summarizeSessions', () => {
     );
     expect(result.totalMinutes).toBe(480);
     expect(result.periods.map((p) => p.period)).toEqual(['2026-10-06']);
+  });
+
+  it('leaves a closed but uncorrected anomaly out of the totals', () => {
+    const result = summarizeSessions(
+      [
+        session('2026-10-05T07:00:00Z', '2026-10-06T07:00:00Z'), // forgotten, closed 24 h later
+        session('2026-10-06T07:00:00Z', '2026-10-06T15:00:00Z'),
+      ],
+      options(),
+    );
+    expect(result.totalMinutes).toBe(480);
   });
 
   it('counts an open session until now, with no clock-out', () => {

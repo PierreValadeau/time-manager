@@ -3,6 +3,7 @@ import { DateTime } from 'luxon';
 export type ClockSession = {
   clockIn: Date;
   clockOut: Date | null;
+  correctedById?: string | null;
 };
 
 export type SessionStatus = 'open' | 'closed' | 'anomaly';
@@ -31,15 +32,17 @@ export type SummaryOptions = {
 const MS_PER_MINUTE = 60_000;
 const MS_PER_HOUR = 3_600_000;
 
-// A session still open past the threshold means a forgotten clock-out
+// A session longer than the threshold means a forgotten clock-out. It stays an anomaly
+// once closed by the next POST /clocks, until a manager corrects it.
 export function sessionStatus(
   session: ClockSession,
   now: Date,
   anomalyThresholdHours: number
 ): SessionStatus {
-  if (session.clockOut) return 'closed';
-  const openFor = now.getTime() - session.clockIn.getTime();
-  return openFor > anomalyThresholdHours * MS_PER_HOUR ? 'anomaly' : 'open';
+  const end = session.clockOut ?? now;
+  const duration = end.getTime() - session.clockIn.getTime();
+  if (duration > anomalyThresholdHours * MS_PER_HOUR && !session.correctedById) return 'anomaly';
+  return session.clockOut ? 'closed' : 'open';
 }
 
 // Duration rounded down to the minute; an open session counts until `now`.
