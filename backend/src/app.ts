@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import errorHandler from './middlewares/errorHandler';
 import notFound from './middlewares/notFound';
+import clockRoutes from './routes/clock.routes';
 
 const app = express();
 
@@ -14,6 +15,8 @@ app.use(cookieParser());
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+app.use('/api/v1/clocks', clockRoutes);
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs
 app.use(notFound);
