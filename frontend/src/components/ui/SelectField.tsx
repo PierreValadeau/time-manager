@@ -12,9 +12,9 @@ export type SelectFieldProps = Omit<ComponentPropsWithRef<'select'>, 'id' | 'chi
 };
 
 // Native select: keyboard, screen readers and mobile pickers work out of the box
-function SelectField({ label, options, hint, error, required, id, className, ...rest }: SelectFieldProps) {
+function SelectField({ label, options, hint, error, required, id, className, 'aria-describedby': describedBy, ...rest }: SelectFieldProps) {
   return (
-    <Field label={label} hint={hint} error={error} required={required} id={id}>
+    <Field label={label} hint={hint} error={error} required={required} id={id} describedBy={describedBy}>
       {(control) => (
         <select {...rest} {...control} className={['input', className].filter(Boolean).join(' ')}>
           {options.map((option) => (

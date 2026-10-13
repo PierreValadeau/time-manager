@@ -7,7 +7,8 @@ export type AlertProps = {
   tone?: AlertTone;
   // Overrides the tone icon, e.g. an envelope for "an activation link will be sent"
   icon?: Icon;
-  children: ReactNode;
+  // Empty content renders only the live region (see below)
+  children?: ReactNode;
 };
 
 const ICONS: Record<AlertTone, Icon> = {
@@ -18,14 +19,21 @@ const ICONS: Record<AlertTone, Icon> = {
 
 // Inline message as in the prototype: one icon + text line, never color alone.
 // An error interrupts the screen reader, other tones wait their turn.
+// Screen readers often skip a live region inserted already filled: keep the Alert mounted
+// and change its content, e.g. <Alert tone="success">{saved && 'Profil mis à jour'}</Alert>
 function Alert({ tone = 'info', icon, children }: AlertProps) {
   const ToneIcon = icon ?? ICONS[tone];
+  const hasContent = children !== undefined && children !== null && children !== false && children !== '';
 
   return (
-    <p className={`alert alert-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
-      <ToneIcon size={16} aria-hidden="true" />
-      <span>{children}</span>
-    </p>
+    <div role={tone === 'error' ? 'alert' : 'status'}>
+      {hasContent && (
+        <p className={`alert alert-${tone}`}>
+          <ToneIcon size={16} aria-hidden="true" />
+          <span>{children}</span>
+        </p>
+      )}
+    </div>
   );
 }
 

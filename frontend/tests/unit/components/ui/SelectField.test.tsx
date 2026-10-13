@@ -27,4 +27,17 @@ describe('SelectField', () => {
     expect(select).toHaveAttribute('aria-invalid', 'true');
     expect(select).toHaveAccessibleDescription('Choisissez une équipe');
   });
+
+  it('keeps the aria-describedby given by the parent', () => {
+    render(
+      <>
+        <p id="team-help">Modifiable plus tard</p>
+        <SelectField label="Équipe" options={ROLES} aria-describedby="team-help" error="Choisissez une équipe" />
+      </>,
+    );
+
+    expect(screen.getByRole('combobox', { name: 'Équipe' })).toHaveAccessibleDescription(
+      'Modifiable plus tard Choisissez une équipe',
+    );
+  });
 });

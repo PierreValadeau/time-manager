@@ -45,7 +45,7 @@ const PAIRS: [string, string, number, string][] = [
   ['color-neutral-400', 'color-surface', TEXT, 'table headers, field hints, mobile tabs'],
   ['color-neutral-500', 'color-bg', TEXT, 'page header date'],
   ['color-neutral-500', 'color-surface', TEXT, 'info message in a card or dialog'],
-  ['color-error', 'color-bg', TEXT, 'field error message'],
+  ['color-error', 'color-bg', TEXT, 'field error message, required asterisk'],
   ['color-error', 'color-surface', TEXT, 'error message in a card'],
   ['color-accent-300', 'color-surface', TEXT, 'success message in a card'],
   ['color-accent-100', 'color-accent-800', TEXT, 'accent tag, avatar'],

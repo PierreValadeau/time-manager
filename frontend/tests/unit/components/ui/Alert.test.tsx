@@ -19,4 +19,15 @@ describe('Alert', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Profil mis à jour');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
+
+  it('keeps the live region mounted while empty, so the message is announced when it appears', () => {
+    const { rerender } = render(<Alert tone="success">{false}</Alert>);
+
+    const region = screen.getByRole('status');
+    expect(region).toBeEmptyDOMElement();
+
+    rerender(<Alert tone="success">Profil mis à jour</Alert>);
+    expect(screen.getByRole('status')).toBe(region);
+    expect(region).toHaveTextContent('Profil mis à jour');
+  });
 });

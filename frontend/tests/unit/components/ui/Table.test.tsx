@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, within } from '@testing-library/react';
 import Table, { type TableColumn } from '../../../../src/components/ui/Table';
 import { expectNoA11yViolations } from './axe';
 
@@ -16,6 +16,32 @@ const DAYS: Day[] = [
   { date: 'Mar. 6', total: '6 h 10', status: 'Incomplet' },
 ];
 
+// jsdom has no layout: sizes and ResizeObserver are simulated
+let notifyResize: () => void;
+
+function resize(element: HTMLElement, { scrollWidth, clientWidth }: { scrollWidth: number; clientWidth: number }) {
+  Object.defineProperty(element, 'scrollWidth', { configurable: true, value: scrollWidth });
+  Object.defineProperty(element, 'clientWidth', { configurable: true, value: clientWidth });
+  act(() => notifyResize());
+}
+
+beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(callback: () => void) {
+        notifyResize = callback;
+      }
+      observe() {}
+      disconnect() {}
+    },
+  );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe('Table', () => {
   it('names the table by its caption and declares column headers', async () => {
     const { container } = render(<Table caption="Mes heures" columns={COLUMNS} rows={DAYS} getRowKey={(d) => d.date} />);
@@ -28,10 +54,15 @@ describe('Table', () => {
     await expectNoA11yViolations(container);
   });
 
-  it('makes the scroll container reachable with the keyboard', () => {
+  it('makes the scroll container reachable with the keyboard only when the table overflows', () => {
     render(<Table caption="Mes heures" columns={COLUMNS} rows={DAYS} getRowKey={(d) => d.date} />);
 
-    expect(screen.getByRole('region', { name: 'Mes heures' })).toHaveAttribute('tabindex', '0');
+    const region = screen.getByRole('region', { name: 'Mes heures' });
+    resize(region, { scrollWidth: 400, clientWidth: 400 });
+    expect(region).not.toHaveAttribute('tabindex');
+
+    resize(region, { scrollWidth: 600, clientWidth: 320 });
+    expect(region).toHaveAttribute('tabindex', '0');
   });
 
   it('hides the caption visually by default but keeps it for screen readers', () => {

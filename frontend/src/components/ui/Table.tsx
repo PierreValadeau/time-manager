@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 
 export type TableColumn<T> = {
   key: string;
@@ -26,11 +26,30 @@ function cellClass(column: Pick<TableColumn<unknown>, 'align' | 'secondary'>): s
 
 function Table<T>({ caption, showCaption = false, columns, rows, getRowKey, emptyMessage = 'Aucune donnée' }: TableProps<T>) {
   const captionId = useId();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [scrollable, setScrollable] = useState(false);
+
+  // Tracks overflow when the container or the table resizes (window, new rows); fires once on observe()
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => setScrollable(element.scrollWidth > element.clientWidth));
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    // Focusable region: a table wider than the screen must be scrollable with the keyboard
-    // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-    <div className="table-scroll" role="region" aria-labelledby={captionId} tabIndex={0}>
+    // Focusable only when the table is wider than its container, so it can be scrolled with the keyboard
+    // without adding a useless tab stop otherwise
+    <div
+      ref={scrollRef}
+      className="table-scroll"
+      role="region"
+      aria-labelledby={captionId}
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+      tabIndex={scrollable ? 0 : undefined}
+    >
       <table className="table">
         <caption id={captionId} className={showCaption ? undefined : 'visually-hidden'}>
           {caption}

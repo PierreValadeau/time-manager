@@ -1,7 +1,7 @@
 import type { ComponentPropsWithRef } from 'react';
 
 type BaseProps = ComponentPropsWithRef<'button'> & {
-  // Disables the button and announces it as busy while a request runs
+  // Blocks clicks and announces the button as busy while a request runs
   loading?: boolean;
   block?: boolean;
 };
@@ -19,6 +19,7 @@ function Button({
   disabled,
   className,
   children,
+  onClick,
   ...rest
 }: ButtonProps) {
   const classes = ['btn', `btn-${variant}`, block && 'btn-block', className].filter(Boolean).join(' ');
@@ -28,8 +29,11 @@ function Button({
       {...rest}
       type={type}
       className={classes}
-      disabled={disabled || loading}
+      disabled={disabled}
+      // aria-disabled rather than disabled: the button keeps keyboard focus during the request
+      aria-disabled={loading || undefined}
       aria-busy={loading || undefined}
+      onClick={loading ? (event) => event.preventDefault() : onClick}
     >
       {children}
     </button>

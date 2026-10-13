@@ -24,12 +24,38 @@ describe('Button', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
-  it('is disabled and announced as busy while loading', () => {
-    render(<Button loading>Connexion</Button>);
+  it('is announced as busy and ignores clicks while loading, without losing focus', async () => {
+    const onClick = vi.fn();
+    const { rerender } = render(<Button onClick={onClick}>Connexion</Button>);
 
     const button = screen.getByRole('button', { name: 'Connexion' });
-    expect(button).toBeDisabled();
+    button.focus();
+    rerender(
+      <Button onClick={onClick} loading>
+        Connexion
+      </Button>,
+    );
+
+    expect(button).toHaveFocus();
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(button).toHaveAttribute('aria-busy', 'true');
+    await userEvent.keyboard('{Enter}');
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('does not submit its form while loading', async () => {
+    const onSubmit = vi.fn((event: SubmitEvent) => event.preventDefault());
+    render(
+      <form aria-label="Connexion" onSubmit={(event) => onSubmit(event.nativeEvent as SubmitEvent)}>
+        <Button type="submit" loading>
+          Se connecter
+        </Button>
+      </form>,
+    );
+
+    await userEvent.click(screen.getByRole('button'));
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   it('gives the icon button an accessible name', async () => {

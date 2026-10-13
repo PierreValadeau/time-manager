@@ -8,9 +8,9 @@ export type TextFieldProps = Omit<ComponentPropsWithRef<'input'>, 'id'> & {
   id?: string;
 };
 
-function TextField({ label, hint, error, required, id, className, ...rest }: TextFieldProps) {
+function TextField({ label, hint, error, required, id, className, 'aria-describedby': describedBy, ...rest }: TextFieldProps) {
   return (
-    <Field label={label} hint={hint} error={error} required={required} id={id}>
+    <Field label={label} hint={hint} error={error} required={required} id={id} describedBy={describedBy}>
       {(control) => <input {...rest} {...control} className={['input', className].filter(Boolean).join(' ')} />}
     </Field>
   );

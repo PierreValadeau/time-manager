@@ -54,4 +54,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # axe and contrast tests back the AA level
+      - run: npm test
       - run: npm run build

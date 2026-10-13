@@ -158,7 +158,8 @@ a:hover {
 .btn-block {
   width: 100%;
 }
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled='true'] {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -235,6 +236,9 @@ textarea.input {
 }
 .field-hint {
   color: var(--color-neutral-400);
+}
+.field-required {
+  color: var(--color-error);
 }
 .field-error {
   display: flex;
@@ -343,6 +347,9 @@ select.input {
   left: 50%;
   bottom: 24px;
   z-index: 30;
+  /* 320 px screens: the message wraps instead of overflowing */
+  width: max-content;
+  max-width: calc(100vw - 32px);
   transform: translateX(-50%);
 }
 .toast {
@@ -354,7 +361,6 @@ select.input {
   background: var(--color-surface);
   box-shadow: var(--shadow-md);
   font-size: 14px;
-  white-space: nowrap;
 }
 .toast svg {
   flex: none;
