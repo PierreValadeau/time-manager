@@ -3,8 +3,6 @@ import { seedAdmin } from './seedAdmin';
 
 const prisma = new PrismaClient();
 
-const BCRYPT_ROUNDS = 12;
-
 /**
  * Apply the real logic on this 
  */

@@ -1,8 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import { hashPassword } from '../src/lib/password'
 
-const BCRYPT_ROUNDS = 12; 
-
 /***
  * Environment variables search 
  * name: string -> name of the var
