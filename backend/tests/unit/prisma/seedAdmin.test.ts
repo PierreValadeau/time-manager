@@ -10,8 +10,8 @@ const env = { ADMIN_EMAIL: 'admin@test.local', ADMIN_PASSWORD: 'Secret123!' };
 
 beforeEach(() => {
   upsert.mockReset();
-  upsert.mockImplementation(async ({ create }) => create); // fait comme si la base renvoyait l'utilisateur créé
-});
+  upsert.mockImplementation(async ({ create }) => create); // pretend he database returns the created user
+}); 
 
 describe('seedAdmin', () => {
   it('upserts the admin on its email', async () => {
@@ -56,3 +56,4 @@ describe('seedAdmin', () => {
     expect(upsert).not.toHaveBeenCalled();
   });
 });
+
