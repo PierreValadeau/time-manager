@@ -1,0 +1,20 @@
+# Trivy exceptions, each scoped to a single path and given an expiry date.
+# Remove an entry as soon as a fixed version is available upstream.
+vulnerabilities:
+  # Bundled in the npm CLI of node:24-slim; even npm@latest (12.2.0) still ships the vulnerable versions.
+  # The app's own dependency tree has the fixed versions and is checked by npm audit.
+  - id: CVE-2026-102276
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+    statement: brace-expansion bundled in the npm CLI, no npm release with the fix yet
+    expired_at: 2026-12-31
+  - id: CVE-2026-102278
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/brace-expansion/package.json"
+    statement: brace-expansion bundled in the npm CLI, no npm release with the fix yet
+    expired_at: 2026-12-31
+  - id: CVE-2026-19534
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: undici bundled in the npm CLI, no npm release with the fix yet
+    expired_at: 2026-12-31
