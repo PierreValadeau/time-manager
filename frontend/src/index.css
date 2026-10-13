@@ -6,6 +6,10 @@
   --color-text: #e9e9ed;
   --color-accent: #9184d9;
   --color-divider: color-mix(in srgb, #e9e9ed 16%, transparent);
+  /* Field outline: the divider (1.6:1) is too faint, 3:1 against the surface is required (WCAG 1.4.11) */
+  --color-border-input: var(--color-neutral-600);
+  /* The prototype flags errors without red: accent-300 text + icon, never color alone */
+  --color-error: var(--color-accent-300);
 
   /* Rampes tonales générées en OKLCH sur une même échelle de luminosité */
   --color-neutral-100: #f3f5fe;
@@ -122,6 +126,19 @@ a:hover {
   color: var(--color-neutral-400);
 }
 
+/* Hidden on screen, still read by screen readers */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* — boutons — */
 .btn {
   display: inline-flex;
@@ -138,7 +155,11 @@ a:hover {
   text-decoration: none;
   cursor: pointer;
 }
-.btn:disabled {
+.btn-block {
+  width: 100%;
+}
+.btn:disabled,
+.btn[aria-disabled='true'] {
   opacity: 0.45;
   cursor: not-allowed;
 }
@@ -195,15 +216,166 @@ a:hover {
   color: var(--color-text);
   caret-color: var(--color-accent);
   background: var(--color-surface);
-  border: 1px solid var(--color-divider);
+  border: 1px solid var(--color-border-input);
   border-radius: var(--radius-md);
 }
 .input:hover {
-  border-color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  border-color: var(--color-neutral-400);
 }
+/* Accent border and ring, flush with the field as in the prototype */
 .input:focus-visible {
   border-color: var(--color-accent);
-  outline: none;
+  outline-offset: 0;
+}
+.input[aria-invalid='true'] {
+  border-color: var(--color-error);
+}
+textarea.input {
+  min-height: 90px;
+  resize: vertical;
+}
+.field-hint {
+  color: var(--color-neutral-400);
+}
+.field-required {
+  color: var(--color-error);
+}
+.field-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-error);
+  font-size: 13px;
+}
+.field-error svg {
+  flex: none;
+}
+
+/* Native select with its own caret, on the page background as in the prototype */
+select.input {
+  padding: 8px 10px;
+  background: var(--color-bg);
+  cursor: pointer;
+}
+
+/* — tables — */
+/* Scroll container: focusable so it can be scrolled with the keyboard on mobile */
+.table-scroll {
+  overflow-x: auto;
+  border-radius: var(--radius-sm);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.table caption {
+  padding-bottom: 8px;
+  text-align: left;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 16px;
+}
+.table th {
+  padding: 10px 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-neutral-400);
+}
+.table td {
+  padding: 11px 8px;
+}
+.table .align-end {
+  text-align: right;
+}
+/* Row rules fading at both ends, a Nocturne signature */
+.table thead tr {
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--color-divider) 48px,
+      var(--color-divider) calc(100% - 48px),
+      transparent
+    )
+    no-repeat bottom / 100% 1px;
+}
+.table tbody tr {
+  background: var(--rule);
+}
+.table tbody tr:hover {
+  background:
+    linear-gradient(
+        color-mix(in srgb, var(--color-text) 4%, transparent),
+        color-mix(in srgb, var(--color-text) 4%, transparent)
+      )
+      no-repeat 0 0 / 100% 100%,
+    var(--rule);
+}
+.table-empty {
+  color: var(--color-neutral-400);
+  text-align: center;
+}
+
+/* — messages — */
+/* One icon + text line, as in the prototype (login error, activation link note) */
+.alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  font-size: 13px;
+}
+.alert svg {
+  flex: none;
+  margin-top: 2px;
+}
+.alert-error,
+.alert-success {
+  color: var(--color-accent-300);
+}
+.alert-info {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+
+/* Live region always present: only its content changes, so it gets announced */
+.toast-region {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 30;
+  /* 320 px screens: the message wraps instead of overflowing */
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+  font-size: 14px;
+}
+.toast svg {
+  flex: none;
+  color: var(--color-accent);
+}
+
+/* Secondary columns hidden on mobile, as in the prototype */
+@media (max-width: 767px) {
+  .table .col-secondary {
+    display: none;
+  }
+  /* Above the tab bar */
+  .toast-region {
+    bottom: calc(96px + env(safe-area-inset-bottom));
+  }
 }
 
 /* — cartes — */
