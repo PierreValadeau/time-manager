@@ -1,7 +1,10 @@
 import { Prisma, type Clock } from '@prisma/client';
+import { DateTime } from 'luxon';
 import AppError from '../errors/AppError';
 import prisma from '../lib/prisma';
+import type { ClockHistoryQuery } from '../schemas/clock.schema';
 import { sessionMinutes, sessionStatus, type SessionStatus } from './hours.service';
+import { isManagerOfEmployee, isSelf, type Caller } from './scope.service';
 
 // Session object of the contract, section 6
 export type SessionDto = {
@@ -71,4 +74,92 @@ export async function toggleClock(
     }
     throw err;
   }
+}
+
+const forbidden = () => new AppError(403, 'FORBIDDEN', 'Droits insuffisants pour cette action');
+
+// GET /users/:id/clocks...
+export async function authorizeClockRead(caller: Caller, id: string): Promise<string> {
+  const userId = id === 'me' ? caller.id : id;
+  if (isSelf(caller, userId)) return userId;
+
+  // An employee only reads their own clocks. Deliberately before the 404 check (unlike
+  // scope.service.ts): the answer is the same whether the user exists or not
+  if (caller.role === 'employee') throw forbidden();
+
+  // A missing user is a 404, not a 403 (see scope.service.ts)
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
+
+  if (!(await isManagerOfEmployee(caller, userId))) throw forbidden();
+  return userId;
+}
+
+// GET /users/:id/clocks/current: the open session, or null.
+export async function getCurrentSession(
+  userId: string,
+  now: Date,
+  anomalyThresholdHours: number
+): Promise<SessionDto | null> {
+  const open = await prisma.clock.findFirst({ where: { userId, clockOut: null } });
+  return open ? toSessionDto(open, now, anomalyThresholdHours) : null;
+}
+
+// Local days (YYYY-MM-DD, both inclusive) to UTC bounds on clockIn
+export function clockInRange(
+  from: string | undefined,
+  to: string | undefined,
+  timezone: string
+): Prisma.DateTimeFilter | undefined {
+  if (!from && !to) return undefined;
+
+  const range: Prisma.DateTimeFilter = {};
+  if (from) range.gte = DateTime.fromISO(from, { zone: timezone }).startOf('day').toJSDate();
+
+  if (to)
+    range.lt = DateTime.fromISO(to, { zone: timezone }).plus({ days: 1 }).startOf('day').toJSDate();
+  return range;
+}
+
+export type Paginated<T> = {
+  data: T[];
+  meta: { page: number; limit: number; total: number };
+};
+
+export type HistoryOptions = {
+  now: Date;
+  anomalyThresholdHours: number;
+  timezone: string;
+};
+
+// GET /users/:id/clocks: paginated, most recent first
+export async function listSessions(
+  userId: string,
+  filters: ClockHistoryQuery,
+  options: HistoryOptions
+): Promise<Paginated<SessionDto>> {
+  const { from, to, status, page, limit } = filters;
+  const { now, anomalyThresholdHours, timezone } = options;
+
+  const where: Prisma.ClockWhereInput = { userId, clockIn: clockInRange(from, to, timezone) };
+  const orderBy: Prisma.ClockOrderByWithRelationInput[] = [{ clockIn: 'desc' }, { id: 'desc' }];
+  const skip = (page - 1) * limit;
+  const toDto = (clock: Clock) => toSessionDto(clock, now, anomalyThresholdHours);
+
+  if (!status) {
+    const [rows, total] = await Promise.all([
+      prisma.clock.findMany({ where, orderBy, skip, take: limit }),
+      prisma.clock.count({ where }),
+    ]);
+    return { data: rows.map(toDto), meta: { page, limit, total } };
+  }
+
+  // The status depends on `now` and on the session length, which Prisma cannot filter on:
+  // it is computed by sessionStatus
+  const rows = await prisma.clock.findMany({ where, orderBy });
+  const matching = rows.map(toDto).filter(session => session.status === status);
+  return {
+    data: matching.slice(skip, skip + limit),
+    meta: { page, limit, total: matching.length },
+  };
 }

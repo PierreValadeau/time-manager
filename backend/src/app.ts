@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import errorHandler from './middlewares/errorHandler';
 import notFound from './middlewares/notFound';
 import clockRoutes from './routes/clock.routes';
+import userClockRoutes from './routes/userClock.routes';
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.get('/api/v1/health', (_req, res) => {
 });
 
 app.use('/api/v1/clocks', clockRoutes);
+app.use('/api/v1/users/:id/clocks', userClockRoutes);
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs
 app.use(notFound);
