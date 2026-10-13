@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { anomalyThresholdHours } from '../../../src/lib/config';
+import { anomalyThresholdHours, appTimezone } from '../../../src/lib/config';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -24,5 +24,24 @@ describe('anomalyThresholdHours', () => {
   it.each(['abc', '0', '-3'])('throws on an invalid value (%s)', (value) => {
     vi.stubEnv('ANOMALY_THRESHOLD_HOURS', value);
     expect(() => anomalyThresholdHours()).toThrow('ANOMALY_THRESHOLD_HOURS');
+  });
+});
+
+describe('appTimezone', () => {
+  it('defaults to Europe/Paris, as in the contract', () => {
+    vi.stubEnv('APP_TIMEZONE', undefined);
+    expect(appTimezone()).toBe('Europe/Paris');
+    vi.stubEnv('APP_TIMEZONE', '');
+    expect(appTimezone()).toBe('Europe/Paris');
+  });
+
+  it('reads APP_TIMEZONE', () => {
+    vi.stubEnv('APP_TIMEZONE', 'America/Montreal');
+    expect(appTimezone()).toBe('America/Montreal');
+  });
+
+  it('throws on an unknown timezone', () => {
+    vi.stubEnv('APP_TIMEZONE', 'Mars/Olympus');
+    expect(() => appTimezone()).toThrow('APP_TIMEZONE');
   });
 });
