@@ -37,6 +37,14 @@ const dbUser = {
   memberships: [],
 };
 
+// Prisma error for a unique constraint violation on the given column
+const uniqueViolation = (column: string) =>
+  new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+    code: 'P2002',
+    clientVersion: 'test',
+    meta: { target: [column] },
+  });
+
 // Data passed to prisma.user.create on the last call
 const createdData = () => createMock.mock.lastCall![0].data;
 // Link passed to the mailer on the last call
@@ -89,19 +97,59 @@ describe('createUser: persistence', () => {
   });
 
   it('returns 409 when the email is already taken', async () => {
-    createMock.mockRejectedValue(
-      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
-        code: 'P2002',
-        clientVersion: 'test',
-      }),
-    );
+    createMock.mockRejectedValue(uniqueViolation('email'));
     await expect(createUser(admin, input)).rejects.toMatchObject({ status: 409, code: 'CONFLICT' });
     expect(sendSetupLinkMock).not.toHaveBeenCalled();
+  });
+
+  it('does not answer 409 for a unique violation on another column', async () => {
+    const error = uniqueViolation('token_hash');
+    createMock.mockRejectedValue(error);
+    await expect(createUser(admin, input)).rejects.toBe(error);
   });
 
   it('rethrows unexpected database errors', async () => {
     createMock.mockRejectedValue(new Error('database down'));
     await expect(createUser(admin, input)).rejects.toThrow('database down');
+  });
+});
+
+describe('createUser: configuration', () => {
+  it.each([
+    ['missing', ''],
+    ['not a URL', 'front.test'],
+  ])('fails before writing anything when FRONTEND_URL is %s', async (_label, value) => {
+    vi.stubEnv('FRONTEND_URL', value);
+    await expect(createUser(admin, input)).rejects.toThrow('FRONTEND_URL');
+    expect(createMock).not.toHaveBeenCalled();
+    expect(sendSetupLinkMock).not.toHaveBeenCalled();
+  });
+
+  it('does not double the slash when FRONTEND_URL ends with one', async () => {
+    vi.stubEnv('FRONTEND_URL', 'http://front.test/');
+    await createUser(admin, input);
+    expect(sendSetupLinkMock.mock.lastCall![1]).toMatch(/^http:\/\/front\.test\/reset-password\?token=/);
+  });
+});
+
+describe('createUser: mail failure', () => {
+  it('still returns the created user when the link cannot be sent', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sendSetupLinkMock.mockRejectedValueOnce(new Error('SMTP down'));
+
+    await expect(createUser(admin, input)).resolves.toMatchObject({ id: 'new-user-id' });
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+
+  it('never logs the token when the link cannot be sent', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    sendSetupLinkMock.mockRejectedValueOnce(new Error('SMTP down'));
+
+    await createUser(admin, input);
+    const token = sentLink().searchParams.get('token')!;
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain(token);
+    consoleError.mockRestore();
   });
 });
 

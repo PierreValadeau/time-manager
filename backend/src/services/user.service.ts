@@ -16,6 +16,23 @@ const CREATABLE_ROLES: Record<UserRole, UserRole[]> = {
 // The link is single-use (used_at, see /auth/password/reset) and expires after 72 hours
 const SETUP_TOKEN_TTL_MS = 72 * 60 * 60 * 1000;
 
+// Read at call time; a missing or invalid value must fail before anything is written
+const getFrontendUrl = () => {
+  const value = process.env.FRONTEND_URL;
+  if (!value || !URL.canParse(value)) {
+    throw new Error('FRONTEND_URL must be set to a valid URL');
+  }
+  return value.replace(/\/+$/, '');
+};
+
+// P2002 on the email column (tokenHash is unique too)
+const isEmailTaken = (err: unknown) => {
+  if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
+  const target = err.meta?.target;
+  const fields = Array.isArray(target) ? target : [target];
+  return fields.some(field => String(field).includes('email'));
+};
+
 const userSelect = {
   id: true,
   firstName: true,
@@ -49,6 +66,8 @@ export async function createUser(actor: Caller, input: CreateUserInput) {
     throw new AppError(403, 'FORBIDDEN', `Vous ne pouvez pas créer un utilisateur de rôle ${input.role}`);
   }
 
+  const frontendUrl = getFrontendUrl();
+
   // The raw token is only sent in the link; the database keeps its SHA-256 hash
   const token = crypto.randomBytes(32).toString('base64url');
   const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
@@ -66,14 +85,20 @@ export async function createUser(actor: Caller, input: CreateUserInput) {
       select: userSelect,
     });
   } catch (err) {
-    // Unique constraint on the (lowercased) email
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+    if (isEmailTaken(err)) {
       throw new AppError(409, 'CONFLICT', 'Un utilisateur avec cet email existe déjà');
     }
     throw err;
   }
 
-  await sendSetupLink(user.email, `${process.env.FRONTEND_URL}/reset-password?token=${token}`);
+  // The user exists now: a mail failure must not turn into a 500 (a retry would hit a 409).
+  // The user can still get a new link through "forgot password"
+  try {
+    await sendSetupLink(user.email, `${frontendUrl}/reset-password?token=${token}`);
+  } catch (err) {
+    // Never log the link: it carries the token
+    console.error(`[mail] Setup link not sent to user ${user.id}`, err);
+  }
 
   // A new user belongs to no team yet, so a manager only gets the reduced profile
   return actor.role === 'admin' ? toFullUser(user) : toReducedUser(user);

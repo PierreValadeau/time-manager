@@ -7,7 +7,8 @@ import prisma from '../../../src/lib/prisma';
 import { sendSetupLink } from '../../../src/services/mail.service';
 import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 
-// The real app (middlewares, route, controller, service), with the database and the mailer mocked
+// Integration test: the real app (middlewares, route, controller, service) over HTTP,
+// with only the database and the mailer mocked
 vi.mock('../../../src/lib/prisma', () => ({ default: { user: { create: vi.fn() } } }));
 vi.mock('../../../src/services/mail.service', () => ({ sendSetupLink: vi.fn() }));
 
@@ -150,6 +151,7 @@ describe('POST /api/v1/users: creation', () => {
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
         code: 'P2002',
         clientVersion: 'test',
+        meta: { target: ['email'] },
       }),
     );
     const res = await postUser('manager');
