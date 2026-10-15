@@ -24,7 +24,11 @@ export function RequireAuth() {
   if (auth.status === 'error') {
     return (
       <div className="auth-screen">
-        <Alert tone="error">Impossible de joindre le serveur. Vérifiez votre connexion puis réessayez.</Alert>
+        <Alert tone="error">
+          {auth.reason === 'network'
+            ? 'Impossible de joindre le serveur. Vérifiez votre connexion puis réessayez.'
+            : 'Le serveur n’a pas pu vérifier votre session. Réessayez dans quelques instants.'}
+        </Alert>
         <Button variant="secondary" onClick={auth.retry}>
           Réessayer
         </Button>

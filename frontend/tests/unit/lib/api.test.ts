@@ -135,14 +135,18 @@ describe('apiFetch: session refresh on 401', () => {
   it('throws the original 401 when the refresh is refused', async () => {
     fetchMock.mockResolvedValueOnce(unauthorized()).mockResolvedValueOnce(unauthorized());
 
-    await expect(api.get('/users/me')).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
+    await expect(api.get('/users/me')).rejects.toMatchObject({
+      status: 401,
+      code: 'UNAUTHORIZED',
+      sessionExpired: true,
+    });
     expect(calledPaths()).toEqual(['/users/me', '/auth/refresh']);
   });
 
   it('throws the original 401 when the refresh fails on the network', async () => {
     fetchMock.mockResolvedValueOnce(unauthorized()).mockRejectedValueOnce(new TypeError('Failed to fetch'));
 
-    await expect(api.get('/users/me')).rejects.toMatchObject({ status: 401 });
+    await expect(api.get('/users/me')).rejects.toMatchObject({ status: 401, sessionExpired: true });
   });
 
   it('does not refresh twice when the replayed request is still 401', async () => {
@@ -155,10 +159,23 @@ describe('apiFetch: session refresh on 401', () => {
     expect(calledPaths()).toEqual(['/users/me', '/auth/refresh', '/users/me']);
   });
 
+  it('does not flag the session as expired when the replay is still 401 after a successful refresh', async () => {
+    fetchMock
+      .mockResolvedValueOnce(unauthorized())
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(apiError(401, 'INVALID_PASSWORD', 'Mot de passe actuel incorrect'));
+
+    await expect(api.put('/auth/password', {})).rejects.toMatchObject({
+      status: 401,
+      code: 'INVALID_PASSWORD',
+      sessionExpired: false,
+    });
+  });
+
   it.each(['/auth/login', '/auth/refresh'])('never refreshes on a 401 from %s', async (path) => {
     fetchMock.mockResolvedValueOnce(apiError(401, 'INVALID_CREDENTIALS', 'Email ou mot de passe incorrect'));
 
-    await expect(apiFetch(path, { method: 'POST' })).rejects.toMatchObject({ status: 401 });
+    await expect(apiFetch(path, { method: 'POST' })).rejects.toMatchObject({ status: 401, sessionExpired: false });
     expect(calledPaths()).toEqual([path]);
   });
 

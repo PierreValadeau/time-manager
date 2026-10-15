@@ -4,9 +4,10 @@ import { ApiError } from './api';
 
 const MAX_RETRIES = 2;
 
-// A 401 reaching here means the refresh failed too: the session is over, the guards send the user to login
+// Only a failed refresh ends the session: a 401 replayed after a successful refresh is a business error
+// (e.g. wrong current password on PUT /auth/password) and must not sign the user out
 function endSessionOnUnauthorized(error: Error) {
-  if (error instanceof ApiError && error.status === 401) {
+  if (error instanceof ApiError && error.sessionExpired) {
     queryClient.setQueryData(ME_QUERY_KEY, null);
   }
 }

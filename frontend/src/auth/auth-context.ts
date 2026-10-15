@@ -27,8 +27,8 @@ export const ME_QUERY_KEY = ['auth', 'me'] as const;
 
 export type AuthState =
   | { status: 'loading'; user: null }
-  // The backend could not tell whether a session exists (server down, network error)
-  | { status: 'error'; user: null }
+  // The session could not be checked: 'network' when no response came back, 'server' for an error response
+  | { status: 'error'; user: null; reason: 'network' | 'server' }
   | { status: 'anonymous'; user: null }
   | { status: 'authenticated'; user: User };
 

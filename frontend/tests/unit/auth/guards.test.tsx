@@ -145,7 +145,12 @@ describe('RequireAuth', () => {
   it('offers a retry when the server cannot be reached', async () => {
     queryClient.setQueryDefaults(ME_QUERY_KEY, { retry: false });
     let up = false;
-    mockBackend({ '/auth/me': () => (up ? json(200, employee) : json(503, {})) });
+    fetchMock.mockImplementation(async () => {
+      if (!up) {
+        throw new TypeError('Failed to fetch');
+      }
+      return json(200, employee);
+    });
 
     renderApp();
 
@@ -153,6 +158,18 @@ describe('RequireAuth', () => {
     up = true;
     await userEvent.click(screen.getByRole('button', { name: 'Réessayer' }));
     expect(await screen.findByText('Home page')).toBeInTheDocument();
+  });
+
+  it.each([404, 429, 500])('does not blame the network when the server answers %i', async (status) => {
+    queryClient.setQueryDefaults(ME_QUERY_KEY, { retry: false });
+    mockBackend({ '/auth/me': () => json(status, {}) });
+
+    renderApp();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Le serveur n’a pas pu vérifier votre session');
+    expect(alert).not.toHaveTextContent('Impossible de joindre le serveur');
+    expect(screen.getByRole('button', { name: 'Réessayer' })).toBeInTheDocument();
   });
 
   it('sends the user to login when the session ends while browsing', async () => {
@@ -165,6 +182,22 @@ describe('RequireAuth', () => {
     renderApp('/pointage');
 
     expect(await screen.findByText('Login page')).toBeInTheDocument();
+  });
+
+  it('keeps the user signed in on a 401 after a successful refresh', async () => {
+    mockBackend({
+      '/auth/me': () => json(200, employee),
+      // Business 401 (e.g. wrong current password): the replay after a successful refresh is still 401
+      '/clocks/current': unauthorized,
+      '/auth/refresh': () => new Response(null, { status: 204 }),
+    });
+
+    renderApp('/pointage');
+
+    expect(await screen.findByText('failed')).toBeInTheDocument();
+    expect(calledPaths()).toEqual(['/auth/me', '/clocks/current', '/auth/refresh', '/clocks/current']);
+    expect(screen.queryByText('Login page')).not.toBeInTheDocument();
+    expect(queryClient.getQueryData(ME_QUERY_KEY)).toEqual(employee);
   });
 });
 

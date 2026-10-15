@@ -16,7 +16,7 @@ async function fetchMe(): Promise<User | null> {
     return await api.get<User>('/auth/me');
   } catch (error) {
     // 401 after a failed refresh: no session, which is a normal answer here
-    if (error instanceof ApiError && error.status === 401) {
+    if (error instanceof ApiError && error.sessionExpired) {
       return null;
     }
     throw error;
@@ -25,7 +25,7 @@ async function fetchMe(): Promise<User | null> {
 
 function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const { data, status, refetch } = useQuery({
+  const { data, status, error, refetch } = useQuery({
     queryKey: ME_QUERY_KEY,
     queryFn: fetchMe,
     // Fetched once per page load; an expired session is caught by the global 401 handler
@@ -60,11 +60,14 @@ function AuthProvider({ children }: { children: ReactNode }) {
       state = { status: 'authenticated', user: data };
     } else if (data === null) {
       state = { status: 'anonymous', user: null };
+    } else if (status === 'error') {
+      // fetch() rejects without a response on a network failure; any HTTP answer becomes an ApiError
+      state = { status: 'error', user: null, reason: error instanceof ApiError ? 'server' : 'network' };
     } else {
-      state = { status: status === 'error' ? 'error' : 'loading', user: null };
+      state = { status: 'loading', user: null };
     }
     return { ...state, login, logout, retry };
-  }, [data, status, login, logout, retry]);
+  }, [data, status, error, login, logout, retry]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
