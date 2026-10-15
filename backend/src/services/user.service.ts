@@ -1,10 +1,10 @@
-import crypto from 'node:crypto';
 import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
 import type { Caller } from './scope.service';
 import type { CreateUserInput } from '../schemas/user.schema';
+import { generateToken, hashToken } from '../lib/token'; 
 
 // Roles each caller may assign (contract, section 2); admin is never assignable
 const CREATABLE_ROLES: Record<UserRole, UserRole[]> = {
@@ -69,8 +69,8 @@ export async function createUser(actor: Caller, input: CreateUserInput) {
   const frontendUrl = getFrontendUrl();
 
   // The raw token is only sent in the link; the database keeps its SHA-256 hash
-  const token = crypto.randomBytes(32).toString('base64url');
-  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const token = generateToken(); 
+  const tokenHash = hashToken(token); 
 
   let user: UserRecord;
   try {

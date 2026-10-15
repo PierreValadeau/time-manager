@@ -2,16 +2,11 @@ import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { signAccessToken } from '../lib/jwt';
+import { hashToken, generateToken, REFRESH_TOKEN_TTL_MS } from '../lib/token'; 
 import type { LoginInput } from '../schemas/auth.schema';
 
-import crypto from 'node:crypto'; 
-import { REFRESH_TOKEN_TTL_MS } from '../lib/cookie';
-
-
-const hashToken = (token: string) => crypto.createHash('sha256').update(token).digest('hex'); 
-
 async function issueRefreshToken(userId: string) {
-    const token = crypto.randomBytes(32).toString('base64url'); 
+    const token = generateToken(); 
     await prisma.refreshToken.create({
         data: { userId, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
     }); 
@@ -20,7 +15,7 @@ async function issueRefreshToken(userId: string) {
 }
 //same error for every failure 
 const invalidCredentials = () => 
-    new AppError(401, 'UNAUTHENTICATED', 'invalid password or email'); 
+    new AppError(401, 'UNAUTHENTICATED', 'Email ou mot de passe incorrect'); 
 
 //compare against when no usable hash exists
 const dummyHash = hashPassword('dummy-password'); 
