@@ -43,6 +43,15 @@ npm run test:coverage  # all tests + coverage report in backend/coverage
 
 The CI runs `npm run test:coverage` against a PostgreSQL service and fails below the thresholds set in `backend/vitest.config.mts`. The HTML report is uploaded as the `backend-coverage` artifact.
 
+Accessibility audit (axe in Chromium, WCAG 2.2 AA, desktop and mobile), also run by the CI on every PR:
+
+```bash
+cd frontend && npx playwright install chromium   # once
+npm run build && npm run test:a11y               # then: npm run test:a11y:report -> a11y-report/summary.md
+```
+
+Each new page must be added to the `PAGES` list in `frontend/e2e/a11y.spec.ts`.
+
 ## Contributing
 
 - Branch: Jira key, from `develop` (`KAN-123`)
