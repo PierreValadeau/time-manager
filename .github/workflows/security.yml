@@ -1,0 +1,71 @@
+name: Security
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+  # Weekly run to catch advisories published after the last push
+  schedule:
+    - cron: "0 6 * * 1"
+
+# A new push on the same branch cancels the previous run
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    name: codeql
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      # JS/TS is analyzed from source, no build step needed
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          build-mode: none
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
+
+  trivy:
+    name: trivy (${{ matrix.app }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t time-manager-${{ matrix.app }}:ci -f ${{ matrix.app }}/Dockerfile.dev ${{ matrix.app }}
+      # Third-party action pinned by commit SHA (v0.36.0)
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: image
+          image-ref: time-manager-${{ matrix.app }}:ci
+          severity: HIGH,CRITICAL
+          # Vulnerabilities without an upstream fix cannot be acted on
+          ignore-unfixed: true
+          exit-code: "1"
+          # Path-scoped exceptions with an expiry date
+          trivyignores: .trivyignore.yaml
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      # Full history so every commit of the push or PR is scanned
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Third-party action pinned by commit SHA (v3.0.0); no license needed for a personal account
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
