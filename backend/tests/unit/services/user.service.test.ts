@@ -1,7 +1,7 @@
-import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../src/lib/prisma';
+import { hashToken } from '../../../src/lib/token';
 import { sendSetupLink } from '../../../src/services/mail.service';
 import { createUser } from '../../../src/services/user.service';
 import type { Caller } from '../../../src/services/scope.service';
@@ -165,7 +165,7 @@ describe('createUser: setup link', () => {
     const token = sentLink().searchParams.get('token')!;
     const { tokenHash } = createdData().passwordResetTokens.create;
 
-    expect(tokenHash).toBe(crypto.createHash('sha256').update(token).digest('hex'));
+    expect(tokenHash).toBe(hashToken(token));
     expect(tokenHash).not.toBe(token);
   });
 
