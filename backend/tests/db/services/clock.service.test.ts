@@ -48,6 +48,22 @@ describe('toggleClock (PostgreSQL)', () => {
     }
     expect(await prisma.clock.count({ where: { userId, clockOut: null } })).toBeLessThanOrEqual(1);
   });
+
+  it('refuses to close a session opened after its now', async () => {
+    // Deterministic replay of the race: this request read now at 08:00:00.000, then a
+    // concurrent one opened a session at 08:00:00.001 before its transaction started
+    const later = await prisma.clock.create({
+      data: { userId, clockIn: new Date('2026-10-07T08:00:00.001Z') },
+    });
+
+    await expect(
+      toggleClock(userId, new Date('2026-10-07T08:00:00.000Z'), THRESHOLD_HOURS)
+    ).rejects.toMatchObject({ status: 409, code: 'CONFLICT' });
+    // Untouched: no clock-out before the clock-in (CHECK clocks_out_after_in)
+    expect(await prisma.clock.findUniqueOrThrow({ where: { id: later.id } })).toMatchObject({
+      clockOut: null,
+    });
+  });
 });
 
 describe('clocks constraints', () => {

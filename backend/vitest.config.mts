@@ -23,7 +23,8 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       // Entry point only: listen() and process wiring
       exclude: ['src/index.ts'],
-      reporter: ['text', 'json-summary', 'html', 'lcov'],
+      // CI: totals only, to keep the logs readable (the HTML report is uploaded as an artifact)
+      reporter: [process.env.CI ? 'text-summary' : 'text', 'json-summary', 'html', 'lcov'],
       reportsDirectory: 'coverage',
       // Below these, the run fails (KAN-49)
       thresholds: {

@@ -7,10 +7,18 @@ if (!databaseName.endsWith('_test')) {
   throw new Error(`DB tests truncate every table: DATABASE_URL must target a *_test database, got "${databaseName}"`);
 }
 
+// Every table of the schema except Prisma's migration history, read once from the database
+// so a new model is emptied too
+let tables: string | undefined;
+
 beforeEach(async () => {
-  await prisma.$executeRawUnsafe(
-    'TRUNCATE users, teams, team_members, clocks, refresh_tokens, password_reset_tokens CASCADE'
-  );
+  if (!tables) {
+    const rows = await prisma.$queryRaw<{ tablename: string }[]>`
+      SELECT tablename FROM pg_tables
+      WHERE schemaname = current_schema() AND tablename <> '_prisma_migrations'`;
+    tables = rows.map(({ tablename }) => `"${tablename}"`).join(', ');
+  }
+  if (tables) await prisma.$executeRawUnsafe(`TRUNCATE ${tables} CASCADE`);
 });
 
 afterAll(async () => {
