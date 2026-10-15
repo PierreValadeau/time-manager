@@ -5,6 +5,7 @@ import type { UserRole } from '@prisma/client';
 import app from '../../../src/app';
 import prisma from '../../../src/lib/prisma';
 import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
+import { USER_LIMIT_PER_MINUTE, userLimiter } from '../../../src/middlewares/rateLimit';
 
 // The real app (middlewares, routes, controllers, services), with the database mocked
 vi.mock('../../../src/lib/prisma', () => ({
@@ -54,8 +55,10 @@ afterAll(() => {
   server.close();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  // The limiter keeps its counters across tests: every test starts with a fresh quota
+  await Promise.all([CAMILLE, BRUNO, NADIA, ADMIN].map(id => userLimiter.resetKey(`user:${id}`)));
   // Only Date is faked: timers stay real so fetch and the server keep working
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
   vi.stubEnv('JWT_SECRET', SECRET);
@@ -393,5 +396,18 @@ describe('GET /users/:id/clocks/summary', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(res.body.error.details.map((d: { field: string }) => d.field)).toContain(field);
     expect(findManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /users/:id/clocks...: rate limiting', () => {
+  it('answers 429 RATE_LIMITED past the limit for the same user, on every clock read route', async () => {
+    for (let i = 0; i < USER_LIMIT_PER_MINUTE; i++) {
+      expect((await get(camille, '/users/me/clocks/current')).status).toBe(200);
+    }
+    const res = await get(camille, '/users/me/clocks/summary?from=2026-10-05&to=2026-10-11');
+    expect(res.status).toBe(429);
+    expect(res.body.error.code).toBe('RATE_LIMITED');
+    // Another user keeps their own quota
+    expect((await get(bruno, '/users/me/clocks/current')).status).toBe(200);
   });
 });

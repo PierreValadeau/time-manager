@@ -5,6 +5,7 @@ import {
   listClocksHandler,
 } from '../controllers/clock.controller';
 import { authenticate } from '../middlewares/auth';
+import { userLimiter } from '../middlewares/rateLimit';
 import validate from '../middlewares/validate';
 import {
   clockHistoryQuerySchema,
@@ -19,6 +20,7 @@ const router = Router({ mergeParams: true });
 router.get(
   '/current',
   authenticate,
+  userLimiter,
   validate({ params: userIdParamSchema }),
   getCurrentClockHandler
 );
@@ -26,6 +28,7 @@ router.get(
 router.get(
   '/summary',
   authenticate,
+  userLimiter,
   validate({ params: userIdParamSchema, query: clockSummaryQuerySchema }),
   clockSummaryHandler
 );
@@ -33,6 +36,7 @@ router.get(
 router.get(
   '/',
   authenticate,
+  userLimiter,
   validate({ params: userIdParamSchema, query: clockHistoryQuerySchema }),
   listClocksHandler
 );
