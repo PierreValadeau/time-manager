@@ -5,7 +5,7 @@ import type { UserRole } from '@prisma/client';
 import app from '../../../src/app';
 import prisma from '../../../src/lib/prisma';
 import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
-import { USER_LIMIT_PER_MINUTE, userLimiter } from '../../../src/middlewares/rateLimit';
+import { apiLimiter, USER_LIMIT_PER_MINUTE, userLimiter } from '../../../src/middlewares/rateLimit';
 
 // The real app (middlewares, routes, controllers, services), with the database mocked
 vi.mock('../../../src/lib/prisma', () => ({
@@ -59,6 +59,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   // The limiter keeps its counters across tests: every test starts with a fresh quota
   await Promise.all([CAMILLE, BRUNO, NADIA, ADMIN].map(id => userLimiter.resetKey(`user:${id}`)));
+  await apiLimiter.resetKey('127.0.0.1');
   // Only Date is faked: timers stay real so fetch and the server keep working
   vi.useFakeTimers({ now: NOW, toFake: ['Date'] });
   vi.stubEnv('JWT_SECRET', SECRET);

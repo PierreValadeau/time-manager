@@ -26,3 +26,17 @@ export const userLimiter = rateLimit({
     next(new AppError(429, 'RATE_LIMITED', 'Trop de requêtes, réessayez dans une minute'));
   },
 });
+
+// Every /api/v1 route, before authenticate: 1000 requests per minute and per IP. Generous on
+// purpose: a whole office can share one IP.
+export const API_LIMIT_PER_MINUTE = 1000;
+
+export const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: API_LIMIT_PER_MINUTE,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler: (_req, _res, next) => {
+    next(new AppError(429, 'RATE_LIMITED', 'Trop de requêtes, réessayez dans une minute'));
+  },
+});
