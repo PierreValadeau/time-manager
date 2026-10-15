@@ -15,6 +15,8 @@ export type PeriodSummary = {
   firstClockIn: Date;
   lastClockOut: Date | null;
   sessions: number;
+  // Contract, section 9: a period still containing an open session is flagged "open"
+  status: 'open' | 'closed';
 };
 
 export type HoursSummary = {
@@ -70,6 +72,7 @@ export function summarizeSessions(sessions: ClockSession[], options: SummaryOpti
     // The whole session belongs to the day (or week) of its clock-in
     const key = periodKey(session.clockIn, groupBy, timezone);
     const minutes = sessionMinutes(session, now);
+    const status = session.clockOut ? 'closed' : 'open';
     const current = byPeriod.get(key);
 
     if (!current) {
@@ -79,12 +82,14 @@ export function summarizeSessions(sessions: ClockSession[], options: SummaryOpti
         firstClockIn: session.clockIn,
         lastClockOut: session.clockOut,
         sessions: 1,
+        status,
       });
       continue;
     }
 
     current.workedMinutes += minutes;
     current.sessions += 1;
+    if (status === 'open') current.status = 'open';
     if (session.clockIn < current.firstClockIn) current.firstClockIn = session.clockIn;
     if (session.clockOut && (!current.lastClockOut || session.clockOut > current.lastClockOut)) {
       current.lastClockOut = session.clockOut;

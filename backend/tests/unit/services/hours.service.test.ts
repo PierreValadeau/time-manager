@@ -120,6 +120,7 @@ describe('summarizeSessions', () => {
         firstClockIn: new Date('2026-10-05T07:00:00Z'),
         lastClockOut: new Date('2026-10-05T15:30:00Z'),
         sessions: 2,
+        status: 'closed',
       },
     ]);
   });
@@ -194,7 +195,39 @@ describe('summarizeSessions', () => {
 
   it('counts an open session until now, with no clock-out', () => {
     const result = summarizeSessions([session('2026-10-07T08:00:00Z', null)], options());
-    expect(result.periods[0]).toMatchObject({ workedMinutes: 240, lastClockOut: null, sessions: 1 });
+    expect(result.periods[0]).toMatchObject({ workedMinutes: 240, lastClockOut: null, sessions: 1, status: 'open' });
+  });
+
+  it('flags a period as open when one of its sessions is still open', () => {
+    const result = summarizeSessions(
+      [
+        session('2026-10-07T06:00:00Z', '2026-10-07T07:00:00Z'), // 60, closed
+        session('2026-10-07T11:00:00Z', null), // 60 until NOW
+        session('2026-10-06T07:00:00Z', '2026-10-06T15:00:00Z'),
+      ],
+      options(),
+    );
+    expect(result.periods.map((p) => [p.period, p.status])).toEqual([
+      ['2026-10-06', 'closed'],
+      ['2026-10-07', 'open'],
+    ]);
+    expect(result.periods[1]).toMatchObject({
+      workedMinutes: 120,
+      sessions: 2,
+      lastClockOut: new Date('2026-10-07T07:00:00Z'),
+    });
+  });
+
+  it('keeps a period closed when its open session is an anomaly', () => {
+    const result = summarizeSessions(
+      [
+        session('2026-10-05T07:00:00Z', '2026-10-05T15:00:00Z'),
+        session('2026-10-05T16:00:00Z', null), // open since 2 days → anomaly, ignored
+      ],
+      options(),
+    );
+    expect(result.periods).toHaveLength(1);
+    expect(result.periods[0]).toMatchObject({ workedMinutes: 480, sessions: 1, status: 'closed' });
   });
 
   it('returns no period for a day without clocking', () => {
