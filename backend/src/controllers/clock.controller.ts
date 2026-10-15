@@ -1,9 +1,10 @@
 import type { RequestHandler } from 'express';
 import AppError from '../errors/AppError';
 import { anomalyThresholdHours, appTimezone } from '../lib/config';
-import type { ClockHistoryQuery } from '../schemas/clock.schema';
+import type { ClockHistoryQuery, ClockSummaryQuery } from '../schemas/clock.schema';
 import {
   authorizeClockRead,
+  getClockSummary,
   getCurrentSession,
   listSessions,
   toggleClock,
@@ -43,4 +44,20 @@ export const listClocksHandler: RequestHandler<{ id: string }> = async (req, res
     timezone: appTimezone(),
   });
   res.json(result);
+};
+
+// GET /users/:id/clocks/summary
+export const clockSummaryHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
+  }
+  const userId = await authorizeClockRead(req.user, req.params.id);
+  // Parsed by validate() with clockSummaryQuerySchema: Express cannot type that itself
+  const query = req.query as unknown as ClockSummaryQuery;
+  const summary = await getClockSummary(userId, query, {
+    now: new Date(),
+    anomalyThresholdHours: anomalyThresholdHours(),
+    timezone: appTimezone(),
+  });
+  res.json(summary);
 };
