@@ -10,7 +10,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:a11y": "playwright test",
+    "test:a11y:report": "node e2e/a11y-report.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",
@@ -21,7 +23,9 @@
     "react-router": "^8.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",

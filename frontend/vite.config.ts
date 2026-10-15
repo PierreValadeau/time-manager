@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
@@ -13,5 +13,7 @@ export default defineConfig({
     // Simulated DOM for component tests
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
+    // e2e/ holds the Playwright audit, run by `npm run test:a11y`
+    exclude: [...configDefaults.exclude, 'e2e/**'],
   },
 });
