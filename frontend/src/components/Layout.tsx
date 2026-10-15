@@ -1,15 +1,11 @@
-import { useEffect } from 'react';
-import { NavLink, Outlet, useMatches } from 'react-router';
-import { ClockIcon, HouseIcon, type Icon } from '@phosphor-icons/react';
+import { useState } from 'react';
+import { NavLink, Outlet } from 'react-router';
+import { ClockIcon, SignOutIcon } from '@phosphor-icons/react';
+import { ROLE_LABELS, useAuth, useCurrentUser, type User } from '../auth/auth-context';
+import { APP_NAME, usePageTitle } from '../lib/page-title';
+import { navItemsFor } from '../lib/navigation';
+import { Button } from './ui';
 import './Layout.css';
-
-// Titre affiché en tête de page, déclaré par chaque route dans `handle`
-export type RouteHandle = { title?: string };
-
-type NavItem = { to: string; label: string; short: string; icon: Icon };
-
-// Entrées de navigation : sidebar sur desktop, barre d'onglets sur mobile
-const NAV_ITEMS: NavItem[] = [{ to: '/', label: 'Accueil', short: 'Accueil', icon: HouseIcon }];
 
 const todayLabel = new Intl.DateTimeFormat('fr-FR', {
   weekday: 'long',
@@ -18,20 +14,7 @@ const todayLabel = new Intl.DateTimeFormat('fr-FR', {
   year: 'numeric',
 });
 
-const APP_NAME = 'Trinity Time';
-
-// Titre de la route courante, repris dans l'onglet : c'est lui que le lecteur d'écran annonce (WCAG 2.4.2)
-function usePageTitle(): string {
-  const matches = useMatches();
-  const handle = matches.at(-1)?.handle as RouteHandle | undefined;
-  const title = handle?.title ?? APP_NAME;
-
-  useEffect(() => {
-    document.title = title === APP_NAME ? APP_NAME : `${title} · ${APP_NAME}`;
-  }, [title]);
-
-  return title;
-}
+const initials = ({ firstName, lastName }: User) => `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
 
 function Brand() {
   return (
@@ -44,9 +27,30 @@ function Brand() {
   );
 }
 
+// Signs out once: a second click while the request runs is ignored
+function useLogout() {
+  const { logout } = useAuth();
+  const [pending, setPending] = useState(false);
+
+  const handleLogout = async () => {
+    setPending(true);
+    try {
+      await logout();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return { pending, handleLogout };
+}
+
 // Layout commun à toutes les pages : navigation, en-tête de page, contenu de la route courante
 function Layout() {
   const title = usePageTitle();
+  const user = useCurrentUser();
+  const { pending, handleLogout } = useLogout();
+  const navItems = navItemsFor(user.role);
+  const fullName = `${user.firstName} ${user.lastName}`;
 
   return (
     <div className="app-shell">
@@ -57,26 +61,51 @@ function Layout() {
       <aside className="sidebar">
         <Brand />
         <nav aria-label="Navigation principale" className="sidebar-nav">
-          {NAV_ITEMS.map(({ to, label, icon: ItemIcon }) => (
+          {navItems.map(({ to, label, icon: ItemIcon }) => (
             <NavLink key={to} to={to} end className="sidebar-link">
               <ItemIcon size={18} aria-hidden="true" />
               {label}
             </NavLink>
           ))}
         </nav>
+
+        <div className="sidebar-user">
+          <span className="avatar" aria-hidden="true">
+            {initials(user)}
+          </span>
+          <div className="sidebar-user-text">
+            <span className="sidebar-user-name">{fullName}</span>
+            <span className="sidebar-user-role">{ROLE_LABELS[user.role]}</span>
+          </div>
+          <Button variant="icon" aria-label="Se déconnecter" loading={pending} onClick={handleLogout}>
+            <SignOutIcon size={18} aria-hidden="true" />
+          </Button>
+        </div>
       </aside>
 
       <div className="app-content">
         <main id="main" tabIndex={-1}>
           <header className="page-header">
-            <span className="page-date">{todayLabel.format(new Date())}</span>
-            <h1>{title}</h1>
+            <div className="page-heading">
+              <span className="page-date">{todayLabel.format(new Date())}</span>
+              <h1>{title}</h1>
+            </div>
+            {/* The sidebar is hidden on mobile: sign-out moves to the page header */}
+            <Button
+              variant="icon"
+              className="header-logout"
+              aria-label="Se déconnecter"
+              loading={pending}
+              onClick={handleLogout}
+            >
+              <SignOutIcon size={20} aria-hidden="true" />
+            </Button>
           </header>
           <Outlet />
         </main>
 
         <nav aria-label="Navigation principale" className="tabbar">
-          {NAV_ITEMS.map(({ to, short, icon: ItemIcon }) => (
+          {navItems.map(({ to, short, icon: ItemIcon }) => (
             <NavLink key={to} to={to} end className="tabbar-link">
               <ItemIcon size={22} aria-hidden="true" />
               {short}
