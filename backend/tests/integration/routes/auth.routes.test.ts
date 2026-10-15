@@ -14,10 +14,13 @@ vi.mock('../../../src/lib/password', () => ({
   hashPassword: vi.fn().mockResolvedValue('dummy-hash'),
   verifyPassword: vi.fn(),
 }));
-// The limiter counts every request of the file: it is tested on its own in auth.rateLimit.test.ts
-vi.mock('../../../src/middlewares/rateLimit', () => ({
+
+// Only authLimiter is bypassed: it would block this file after 5 logins. It is tested in rateLimit.test.ts
+vi.mock('../../../src/middlewares/rateLimit', async importOriginal => ({
+  ...(await importOriginal<typeof import('../../../src/middlewares/rateLimit')>()),
   authLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
 }));
+
 
 const findUniqueMock = prisma.user.findUnique as unknown as Mock;
 const verifyPasswordMock = verifyPassword as unknown as Mock;
