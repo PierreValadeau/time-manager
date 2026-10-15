@@ -21,9 +21,23 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: timemanager_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d timemanager_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
-      # prisma generate only reads the schema, it never connects to the database
-      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      # The DB tests refuse any database whose name does not end with _test
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/timemanager_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -36,6 +50,25 @@ jobs:
       - run: npx prisma generate
       - run: npm run typecheck
       - run: npm run lint
+      - run: npx prisma migrate deploy
+      # Unit and DB tests; fails below the thresholds of vitest.config.mts
+      - run: npm run test:coverage
+      - name: Coverage summary
+        if: ${{ !cancelled() && hashFiles('backend/coverage/coverage-summary.json') != '' }}
+        run: |
+          node -e '
+            const { total } = require("./coverage/coverage-summary.json");
+            const rows = ["statements", "branches", "functions", "lines"]
+              .map(k => `| ${k} | ${total[k].pct}% | ${total[k].covered}/${total[k].total} |`);
+            console.log(["### Backend coverage", "", "| Metric | % | Covered |", "|---|---|---|", ...rows].join("\n"));
+          ' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+          if-no-files-found: ignore
+          retention-days: 14
       - run: npm run build
 
   frontend:

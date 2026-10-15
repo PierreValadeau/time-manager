@@ -71,7 +71,7 @@ describe('toggleClock', () => {
     const result = await toggleClock(USER_ID, NOW, 14);
 
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: 'clock-id', clockOut: null },
+      where: { id: 'clock-id', clockOut: null, clockIn: { lt: NOW } },
       data: { clockOut: NOW },
     });
     expect(createMock).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe('toggleClock', () => {
     const result = await toggleClock(USER_ID, NOW, 14);
 
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: 'clock-id', clockOut: null },
+      where: { id: 'clock-id', clockOut: null, clockIn: { lt: NOW } },
       data: { clockOut: NOW },
     });
     expect(createMock).toHaveBeenCalledWith({ data: { userId: USER_ID, clockIn: NOW } });
