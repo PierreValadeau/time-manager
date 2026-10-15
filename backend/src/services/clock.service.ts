@@ -51,10 +51,12 @@ export async function toggleClock(
       const open = await tx.clock.findFirst({ where: { userId, clockOut: null } });
 
       // updateMany is a single UPDATE ... WHERE clock_out IS NULL: if a concurrent
-      // request closed the session first, it matches no row instead of overwriting it
+      // request closed the session first, it matches no row instead of overwriting it.
+      // now is read before the transaction: a session opened by a later concurrent
+      // request must not be closed before its start (CHECK clocks_out_after_in)
       const close = async (clock: Clock) => {
         const { count } = await tx.clock.updateMany({
-          where: { id: clock.id, clockOut: null },
+          where: { id: clock.id, clockOut: null, clockIn: { lt: now } },
           data: { clockOut: now },
         });
         if (count === 0) throw concurrentClock();

@@ -4,13 +4,15 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "build": "tsc",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test:db": "vitest run --project db",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [],
   "author": "",
@@ -35,6 +37,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/luxon": "^3.7.6",
     "@types/node": "^26.6.4",
+    "@vitest/coverage-v8": "^5.0.3",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "prisma": "^6.19.3",

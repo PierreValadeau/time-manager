@@ -30,6 +30,19 @@ cd backend && npm test    # or: cd frontend && npm test
 
 Outside Docker, run `npm ci` then `npx prisma generate` in `backend/` first.
 
+`npm test` runs the backend tests that mock Prisma. The tests in `backend/tests/db` use a real PostgreSQL database, which they empty before each test, so they only accept a database whose name ends with `_test`:
+
+```bash
+docker compose exec db createdb -U tm timemanager_test   # once
+cd backend
+export DATABASE_URL=postgresql://tm:tm@localhost:5433/timemanager_test
+npx prisma migrate deploy
+npm run test:db        # DB tests only
+npm run test:coverage  # all tests + coverage report in backend/coverage
+```
+
+The CI runs `npm run test:coverage` against a PostgreSQL service and fails below the thresholds set in `backend/vitest.config.mts`. The HTML report is uploaded as the `backend-coverage` artifact.
+
 ## Contributing
 
 - Branch: Jira key, from `develop` (`KAN-123`)
