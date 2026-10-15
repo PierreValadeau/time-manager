@@ -1,8 +1,16 @@
 import { Router } from 'express';
-import { getCurrentClockHandler, listClocksHandler } from '../controllers/clock.controller';
+import {
+  clockSummaryHandler,
+  getCurrentClockHandler,
+  listClocksHandler,
+} from '../controllers/clock.controller';
 import { authenticate } from '../middlewares/auth';
 import validate from '../middlewares/validate';
-import { clockHistoryQuerySchema, userIdParamSchema } from '../schemas/clock.schema';
+import {
+  clockHistoryQuerySchema,
+  clockSummaryQuerySchema,
+  userIdParamSchema,
+} from '../schemas/clock.schema';
 
 // Mounted on /users/:id/clocks: mergeParams exposes the parent :id here
 const router = Router({ mergeParams: true });
@@ -13,6 +21,13 @@ router.get(
   authenticate,
   validate({ params: userIdParamSchema }),
   getCurrentClockHandler
+);
+
+router.get(
+  '/summary',
+  authenticate,
+  validate({ params: userIdParamSchema, query: clockSummaryQuerySchema }),
+  clockSummaryHandler
 );
 
 router.get(

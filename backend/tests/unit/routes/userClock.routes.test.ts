@@ -92,7 +92,11 @@ const get = async (caller: Caller, path: string) => {
 };
 
 describe('GET /users/:id/clocks/current and /users/:id/clocks: access', () => {
-  const paths = (id: string) => [`/users/${id}/clocks/current`, `/users/${id}/clocks`];
+  const paths = (id: string) => [
+    `/users/${id}/clocks/current`,
+    `/users/${id}/clocks`,
+    `/users/${id}/clocks/summary?from=2026-10-05&to=2026-10-11`,
+  ];
 
   it.each(paths(CAMILLE))('answers 401 without session (%s)', async (path) => {
     const res = await get(null, path);
@@ -281,6 +285,110 @@ describe('GET /users/:id/clocks', () => {
     ['page=0', 'page'],
   ])('answers 400 on invalid query %s', async (query, field) => {
     const res = await get(camille, `/users/${CAMILLE}/clocks?${query}`);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.details.map((d: { field: string }) => d.field)).toContain(field);
+    expect(findManyMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /users/:id/clocks/summary', () => {
+  const summary = (query: string) => get(camille, `/users/me/clocks/summary?${query}`);
+
+  it('answers the summary of the contract, grouped by local day by default', async () => {
+    findManyMock.mockResolvedValue([
+      dbClock('a', '2026-10-05T07:00:00Z', '2026-10-05T11:00:00Z'), // 240
+      dbClock('b', '2026-10-05T12:00:00Z', '2026-10-05T15:30:00Z'), // 210
+      dbClock('c', '2026-10-06T07:00:00Z', '2026-10-06T15:00:00Z'), // 480
+    ]);
+
+    const res = await summary('from=2026-10-05&to=2026-10-11');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      userId: CAMILLE,
+      from: '2026-10-05',
+      to: '2026-10-11',
+      groupBy: 'day',
+      totalMinutes: 930,
+      periods: [
+        {
+          period: '2026-10-05',
+          workedMinutes: 450,
+          firstClockIn: '2026-10-05T07:00:00.000Z',
+          lastClockOut: '2026-10-05T15:30:00.000Z',
+          sessions: 2,
+          status: 'closed',
+        },
+        {
+          period: '2026-10-06',
+          workedMinutes: 480,
+          firstClockIn: '2026-10-06T07:00:00.000Z',
+          lastClockOut: '2026-10-06T15:00:00.000Z',
+          sessions: 1,
+          status: 'closed',
+        },
+      ],
+    });
+  });
+
+  it('reads the sessions whose clock-in falls in the local days, oldest first', async () => {
+    await summary('from=2026-10-05&to=2026-10-11');
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: {
+        userId: CAMILLE,
+        clockIn: { gte: new Date('2026-10-04T22:00:00Z'), lt: new Date('2026-10-11T22:00:00Z') },
+      },
+      select: { clockIn: true, clockOut: true, correctedById: true },
+      orderBy: { clockIn: 'asc' },
+    });
+  });
+
+  it('groups by ISO week', async () => {
+    findManyMock.mockResolvedValue([
+      dbClock('a', '2026-10-05T07:00:00Z', '2026-10-05T15:00:00Z'),
+      dbClock('b', '2026-10-12T07:00:00Z', '2026-10-12T15:00:00Z'),
+    ]);
+    const res = await summary('from=2026-10-05&to=2026-10-18&groupBy=week');
+    expect(res.body.groupBy).toBe('week');
+    expect(res.body.periods.map((p: { period: string }) => p.period)).toEqual(['2026-W41', '2026-W42']);
+  });
+
+  it('counts an open session until now and flags its period as open', async () => {
+    findManyMock.mockResolvedValue([dbClock('open', '2026-10-07T12:00:00Z')]); // NOW = 16:00Z
+    const res = await summary('from=2026-10-07&to=2026-10-07');
+    expect(res.body.totalMinutes).toBe(240);
+    expect(res.body.periods[0]).toMatchObject({ workedMinutes: 240, lastClockOut: null, status: 'open' });
+  });
+
+  it('leaves anomaly sessions out of the totals', async () => {
+    findManyMock.mockResolvedValue([
+      dbClock('forgotten', '2026-10-05T07:00:00Z', '2026-10-06T06:00:00Z'),
+      dbClock('ok', '2026-10-06T07:00:00Z', '2026-10-06T15:00:00Z'),
+    ]);
+    const res = await summary('from=2026-10-05&to=2026-10-11');
+    expect(res.body.totalMinutes).toBe(480);
+    expect(res.body.periods.map((p: { period: string }) => p.period)).toEqual(['2026-10-06']);
+  });
+
+  it('answers an empty summary without sessions', async () => {
+    const res = await summary('from=2026-10-05&to=2026-10-11');
+    expect(res.body).toMatchObject({ totalMinutes: 0, periods: [] });
+  });
+
+  it('accepts 366 days, both bounds included (a leap year)', async () => {
+    expect((await summary('from=2028-01-01&to=2028-12-31')).status).toBe(200);
+  });
+
+  it.each([
+    ['to=2026-10-11', 'from'],
+    ['from=2026-10-05', 'to'],
+    ['from=2026-10-11&to=2026-10-05', 'to'],
+    ['from=2026-01-01&to=2027-01-02', 'to'], // 367 days, both bounds included
+    ['from=2026-10-05&to=2026-10-11&groupBy=month', 'groupBy'],
+    ['from=2026-10-05T00:00:00Z&to=2026-10-11', 'from'],
+  ])('answers 400 on invalid query %s', async (query, field) => {
+    const res = await summary(query);
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
     expect(res.body.error.details.map((d: { field: string }) => d.field)).toContain(field);

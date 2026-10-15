@@ -2,8 +2,14 @@ import { Prisma, type Clock } from '@prisma/client';
 import { DateTime } from 'luxon';
 import AppError from '../errors/AppError';
 import prisma from '../lib/prisma';
-import type { ClockHistoryQuery } from '../schemas/clock.schema';
-import { sessionMinutes, sessionStatus, type SessionStatus } from './hours.service';
+import type { ClockHistoryQuery, ClockSummaryQuery } from '../schemas/clock.schema';
+import {
+  sessionMinutes,
+  sessionStatus,
+  summarizeSessions,
+  type HoursSummary,
+  type SessionStatus,
+} from './hours.service';
 import { isManagerOfEmployee, isSelf, type Caller } from './scope.service';
 
 // Session object of the contract, section 6
@@ -162,4 +168,31 @@ export async function listSessions(
     data: matching.slice(skip, skip + limit),
     meta: { page, limit, total: matching.length },
   };
+}
+
+export type ClockSummary = HoursSummary & {
+  userId: string;
+  from: string;
+  to: string;
+  groupBy: ClockSummaryQuery['groupBy'];
+};
+
+// GET /users/:id/clocks/summary: worked minutes per local day or ISO week
+export async function getClockSummary(
+  userId: string,
+  query: ClockSummaryQuery,
+  options: HistoryOptions
+): Promise<ClockSummary> {
+  const { from, to, groupBy } = query;
+  const { now, anomalyThresholdHours, timezone } = options;
+
+  // Same rule as the history: a session belongs to the day of its clock-in
+  const sessions = await prisma.clock.findMany({
+    where: { userId, clockIn: clockInRange(from, to, timezone) },
+    select: { clockIn: true, clockOut: true, correctedById: true },
+    orderBy: { clockIn: 'asc' },
+  });
+
+  const summary = summarizeSessions(sessions, { groupBy, timezone, now, anomalyThresholdHours });
+  return { userId, from, to, groupBy, ...summary };
 }
