@@ -1,0 +1,78 @@
+name: Accessibility
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+
+# A new push on the same branch cancels the previous run
+concurrency:
+  group: a11y-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  axe:
+    name: axe (WCAG 2.2 AA)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Post the audit result as a PR comment
+      pull-requests: write
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      # Only Chromium: axe results do not depend on the browser engine
+      - run: npx playwright install --with-deps chromium
+      - id: audit
+        run: npm run test:a11y
+
+      # The steps below also run when the audit fails, so the PR shows why (but not on a cancelled run)
+      - name: Write summary
+        if: ${{ !cancelled() }}
+        env:
+          # Lets the summary turn red when a page crashed before axe could check it
+          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+        run: |
+          npm run test:a11y:report
+          cat a11y-report/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Comment on the pull request
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        # The token is read-only on fork and Dependabot PRs: the job status must only reflect the audit
+        continue-on-error: true
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs');
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const summary = fs.readFileSync('frontend/a11y-report/summary.md', 'utf8');
+            const body = `${summary}\n\n[Job details and \`a11y-report\` artifact](${runUrl})`;
+            const marker = '<!-- a11y-report -->';
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const previous = comments.find((c) => c.user.login === 'github-actions[bot]' && c.body.startsWith(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: previous.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+      - name: Upload detailed report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a11y-report
+          path: frontend/a11y-report/
+          retention-days: 14
