@@ -2,8 +2,14 @@ import { Prisma, type Clock } from '@prisma/client';
 import { DateTime } from 'luxon';
 import AppError from '../errors/AppError';
 import prisma from '../lib/prisma';
-import type { ClockHistoryQuery } from '../schemas/clock.schema';
-import { sessionMinutes, sessionStatus, type SessionStatus } from './hours.service';
+import type { ClockHistoryQuery, ClockSummaryQuery } from '../schemas/clock.schema';
+import {
+  sessionMinutes,
+  sessionStatus,
+  summarizeSessions,
+  type HoursSummary,
+  type SessionStatus,
+} from './hours.service';
 import { isManagerOfEmployee, isSelf, type Caller } from './scope.service';
 
 // Session object of the contract, section 6
@@ -45,10 +51,12 @@ export async function toggleClock(
       const open = await tx.clock.findFirst({ where: { userId, clockOut: null } });
 
       // updateMany is a single UPDATE ... WHERE clock_out IS NULL: if a concurrent
-      // request closed the session first, it matches no row instead of overwriting it
+      // request closed the session first, it matches no row instead of overwriting it.
+      // now is read before the transaction: a session opened by a later concurrent
+      // request must not be closed before its start (CHECK clocks_out_after_in)
       const close = async (clock: Clock) => {
         const { count } = await tx.clock.updateMany({
-          where: { id: clock.id, clockOut: null },
+          where: { id: clock.id, clockOut: null, clockIn: { lt: now } },
           data: { clockOut: now },
         });
         if (count === 0) throw concurrentClock();
@@ -162,4 +170,31 @@ export async function listSessions(
     data: matching.slice(skip, skip + limit),
     meta: { page, limit, total: matching.length },
   };
+}
+
+export type ClockSummary = HoursSummary & {
+  userId: string;
+  from: string;
+  to: string;
+  groupBy: ClockSummaryQuery['groupBy'];
+};
+
+// GET /users/:id/clocks/summary: worked minutes per local day or ISO week
+export async function getClockSummary(
+  userId: string,
+  query: ClockSummaryQuery,
+  options: HistoryOptions
+): Promise<ClockSummary> {
+  const { from, to, groupBy } = query;
+  const { now, anomalyThresholdHours, timezone } = options;
+
+  // Same rule as the history: a session belongs to the day of its clock-in
+  const sessions = await prisma.clock.findMany({
+    where: { userId, clockIn: clockInRange(from, to, timezone) },
+    select: { clockIn: true, clockOut: true, correctedById: true },
+    orderBy: { clockIn: 'asc' },
+  });
+
+  const summary = summarizeSessions(sessions, { groupBy, timezone, now, anomalyThresholdHours });
+  return { userId, from, to, groupBy, ...summary };
 }

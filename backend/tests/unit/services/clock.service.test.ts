@@ -5,6 +5,7 @@ import AppError from '../../../src/errors/AppError';
 import {
   authorizeClockRead,
   clockInRange,
+  getClockSummary,
   listSessions,
   toggleClock,
   toSessionDto,
@@ -71,7 +72,7 @@ describe('toggleClock', () => {
     const result = await toggleClock(USER_ID, NOW, 14);
 
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: 'clock-id', clockOut: null },
+      where: { id: 'clock-id', clockOut: null, clockIn: { lt: NOW } },
       data: { clockOut: NOW },
     });
     expect(createMock).not.toHaveBeenCalled();
@@ -92,7 +93,7 @@ describe('toggleClock', () => {
     const result = await toggleClock(USER_ID, NOW, 14);
 
     expect(updateManyMock).toHaveBeenCalledWith({
-      where: { id: 'clock-id', clockOut: null },
+      where: { id: 'clock-id', clockOut: null, clockIn: { lt: NOW } },
       data: { clockOut: NOW },
     });
     expect(createMock).toHaveBeenCalledWith({ data: { userId: USER_ID, clockIn: NOW } });
@@ -253,5 +254,43 @@ describe('listSessions', () => {
     ]);
     const result = await listSessions(USER_ID, { status: 'anomaly', page: 1, limit: 20 }, options);
     expect(result.meta.total).toBe(0);
+  });
+});
+
+describe('getClockSummary', () => {
+  const options = { now: NOW, anomalyThresholdHours: 14, timezone: 'Europe/Paris' };
+
+  it('summarizes the sessions of the local days and echoes the query', async () => {
+    findManyMock.mockResolvedValue([
+      clock('2026-10-05T07:00:00Z', '2026-10-05T15:00:00Z'),
+      clock('2026-10-07T12:00:00Z'), // open, 240 min until NOW
+    ]);
+
+    const result = await getClockSummary(USER_ID, { from: '2026-10-05', to: '2026-10-11', groupBy: 'week' }, options);
+
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: {
+        userId: USER_ID,
+        clockIn: { gte: new Date('2026-10-04T22:00:00Z'), lt: new Date('2026-10-11T22:00:00Z') },
+      },
+      select: { clockIn: true, clockOut: true, correctedById: true },
+      orderBy: { clockIn: 'asc' },
+    });
+    expect(result).toMatchObject({
+      userId: USER_ID,
+      from: '2026-10-05',
+      to: '2026-10-11',
+      groupBy: 'week',
+      totalMinutes: 720,
+      periods: [{ period: '2026-W41', workedMinutes: 720, sessions: 2, status: 'open' }],
+    });
+  });
+
+  it('counts a corrected long session', async () => {
+    findManyMock.mockResolvedValue([
+      { ...clock('2026-10-05T07:00:00Z', '2026-10-05T23:00:00Z'), correctedById: 'manager-id' },
+    ]);
+    const result = await getClockSummary(USER_ID, { from: '2026-10-05', to: '2026-10-05', groupBy: 'day' }, options);
+    expect(result.totalMinutes).toBe(960);
   });
 });

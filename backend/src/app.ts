@@ -1,10 +1,11 @@
+import cookieParser from 'cookie-parser';
 import express from 'express';
 import helmet from 'helmet';
-import cookieParser from 'cookie-parser';
 import errorHandler from './middlewares/errorHandler';
 import notFound from './middlewares/notFound';
-import userRoutes from './routes/user.routes';
+import { apiLimiter } from './middlewares/rateLimit';
 import clockRoutes from './routes/clock.routes';
+import userRoutes from './routes/user.routes';
 import userClockRoutes from './routes/userClock.routes';
 import authRoutes from './routes/auth.routes'; 
 
@@ -18,6 +19,9 @@ app.use(cookieParser());
 app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+// CodeQL requires a limiter in front of authenticate
+app.use('/api/v1', apiLimiter);
 
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/clocks', clockRoutes);
