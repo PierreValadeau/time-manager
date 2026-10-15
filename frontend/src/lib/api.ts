@@ -13,6 +13,9 @@ export class ApiError extends Error {
   public readonly status: number;
   public readonly code: string;
   public readonly details?: ApiErrorDetail[];
+  // 401 dont le renouvellement de session a échoué : la session est terminée.
+  // Un 401 rejoué après un refresh réussi (ex. mot de passe actuel faux) ne l'est pas
+  public sessionExpired = false;
 
   constructor(status: number, code: string, message: string, details?: ApiErrorDetail[]) {
     super(message);
@@ -63,14 +66,21 @@ function refreshSession(): Promise<boolean> {
 
 export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
   let res = await send(path, options);
+  let sessionExpired = false;
 
   // Access token expiré : on renouvelle la session puis on rejoue la requête une seule fois
-  if (res.status === 401 && !NO_REFRESH_PATHS.includes(path) && (await refreshSession())) {
-    res = await send(path, options);
+  if (res.status === 401 && !NO_REFRESH_PATHS.includes(path)) {
+    if (await refreshSession()) {
+      res = await send(path, options);
+    } else {
+      sessionExpired = true;
+    }
   }
 
   if (!res.ok) {
-    throw await toApiError(res);
+    const error = await toApiError(res);
+    error.sessionExpired = sessionExpired;
+    throw error;
   }
   // 204 ou 200 sans corps : rien à décoder
   const text = await res.text();

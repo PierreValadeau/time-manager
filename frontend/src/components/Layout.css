@@ -86,6 +86,34 @@
   box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
+/* — utilisateur connecté — */
+.sidebar-user {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+}
+
+.sidebar-user-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-user-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-role {
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+
 /* — contenu — */
 .app-content {
   flex: 1;
@@ -105,8 +133,20 @@ main {
 
 .page-header {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-heading {
+  min-width: 0;
+  display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.page-header .header-logout {
+  display: none;
 }
 
 .page-date {
@@ -136,6 +176,10 @@ main {
 
   .page-header h1 {
     font-size: 20px;
+  }
+
+  .page-header .header-logout {
+    display: inline-flex;
   }
 
   .tabbar {

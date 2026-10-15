@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import {
   API_LIMIT_PER_MINUTE,
   apiLimiter,
+  authLimiter,
   USER_LIMIT_PER_MINUTE,
   userLimiter,
 } from '../../../src/middlewares/rateLimit';
@@ -26,6 +27,11 @@ const buildApp = () => {
   app.get('/private', apiLimiter, (_req, _res, next) => {
     next(new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée'));
   });
+
+  app.post('/login', authLimiter, (_req, _res, next) => {
+    next(new AppError(401, 'UNAUTHENTICATED', 'Email ou mot de passe incorrect')); 
+  }); 
+
   app.use(errorHandler);
   return app;
 };
@@ -92,3 +98,17 @@ describe('apiLimiter', () => {
     expect((await res.json()).error.code).toBe('RATE_LIMITED');
   });
 });
+
+describe('authLimiter', () => {
+  it('answers 429 RATE_LIMITED on the 6th attempt, failed attempts inclued', async () => {
+    //Section 3 of the contract: 5 attemps per 15 minutes
+    for (let i = 0; i < 5; i++) {
+      expect((await fetch(`${baseUrl}/login`, { method: 'POST' })).status).toBe(401);
+    }
+
+    const res = await fetch(`${baseUrl}/login`, { method: 'POST' }); 
+    expect(res.status).toBe(429); 
+    expect((await res.json()).error.code).toBe('RATE_LIMITED'); 
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(14 * 60); 
+  }); 
+}); 
