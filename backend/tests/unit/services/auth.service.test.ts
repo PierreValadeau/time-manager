@@ -21,8 +21,13 @@ const verifyPasswordMock = verifyPassword as unknown as Mock;
 const input = { email: 'test.testy@trinity.com', password: 'secret' };
 const dbUser = {
   id: '001', firstName: 'Test', lastName: 'Testy', email: input.email,
-  role: 'employee', passwordHash: 'real-hash', deletedAt: null,
+  phoneNumber: null, role: 'employee',
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  memberships: [{ team: { id: 't1', name: 'Team A' } }],
+  passwordHash: 'real-hash', deletedAt: null,
 };
+
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -36,9 +41,14 @@ afterEach(() => {
 });
 
 describe('login: success', () => {
-  it('returns the profile without passwordHash or deletedAt', async () => {
+  it('returns the full profile without passwordHash or deletedAt', async () => {
     const { user } = await login(input);
-    expect(user).toEqual({ id: '001', firstName: 'Test', lastName: 'Testy', email: input.email, role: 'employee' });
+    expect(user).toEqual({ 
+      id: '001', firstName: 'Test', lastName: 'Testy', email: input.email,
+      phoneNumber: null, role: 'employee',
+      createdAt: dbUser.createdAt, updatedAt: dbUser.updatedAt,
+      teams: [{ id: 't1', name: 'Team A' }],
+     });
   });
 
   it('signs an access token for this user and role', async () => {

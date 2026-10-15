@@ -3,7 +3,9 @@ import AppError from '../errors/AppError';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { signAccessToken } from '../lib/jwt';
 import { hashToken, generateToken, REFRESH_TOKEN_TTL_MS } from '../lib/token'; 
+import { toFullUser, userSelect } from './user.service';
 import type { LoginInput } from '../schemas/auth.schema';
+
 
 async function issueRefreshToken(userId: string) {
     const token = generateToken(); 
@@ -24,17 +26,20 @@ const dummyHash = hashPassword('dummy-password');
 export async function login({ email, password }: LoginInput) {
     const user = await prisma.user.findUnique({
         where: { email }, 
-        select: { id: true, firstName: true, lastName: true, email: true, role: true, passwordHash: true, deletedAt: true },
+        select: { ...userSelect, passwordHash: true, deletedAt: true },
     }); 
 
     const hash = user && !user.deletedAt && user.passwordHash ? user.passwordHash : await dummyHash; //we hash the dummy if anything not going well
     const valid = await verifyPassword(password, hash); 
 
     if (!user || user.deletedAt || !user.passwordHash || !valid) throw invalidCredentials(); 
+
+    const { passwordHash, deletedAt, ...profile } = user; 
+    if (deletedAt || !passwordHash) throw invalidCredentials(); 
  
     return { 
         accessToken: signAccessToken({ id: user.id, role: user.role }), 
         refreshToken: await issueRefreshToken(user.id),
-        user: { id: user.id, firstName: user.firstName, lastName: user.lastName, email: user.email, role: user.role }, 
+        user: toFullUser(profile), 
     }; 
 }

@@ -23,15 +23,16 @@ const findUniqueMock = prisma.user.findUnique as unknown as Mock;
 const verifyPasswordMock = verifyPassword as unknown as Mock;
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
+const input = { email: 'test.testy@trinity.com', password: 'secret' };
 const dbUser = {
-  id: '001',
-  firstName: 'Test',
-  lastName: 'Testy',
-  email: 'test.testy@trinity.com',
-  role: 'employee',
-  passwordHash: 'real-hash',
-  deletedAt: null,
+  id: '001', firstName: 'Test', lastName: 'Testy', email: input.email,
+  phoneNumber: null, role: 'employee',
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  memberships: [{ team: { id: 't1', name: 'Team A' } }],
+  passwordHash: 'real-hash', deletedAt: null,
 };
+
 
 let server: Server;
 let baseUrl: string;
@@ -73,11 +74,11 @@ describe('POST /api/v1/auth/login: success', () => {
     const res = await login({ email: 'Jean.Dupont@Trinity.com', password: 'secret' });
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
-      id: '001',
-      firstName: 'Test',
-      lastName: 'Testy',
-      email: 'test.testy@trinity.com',
-      role: 'employee',
+      id: '001', firstName: 'Test', lastName: 'Testy',
+      email: 'test.testy@trinity.com', phoneNumber: null, role: 'employee',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      teams: [{ id: 't1', name: 'Team A' }],
     });
     expect(JSON.stringify(res.body)).not.toMatch(/token|hash/i);
   });

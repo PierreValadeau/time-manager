@@ -33,7 +33,7 @@ const isEmailTaken = (err: unknown) => {
   return fields.some(field => String(field).includes('email'));
 };
 
-const userSelect = {
+export const userSelect = {
   id: true,
   firstName: true,
   lastName: true,
