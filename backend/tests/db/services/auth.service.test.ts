@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import prisma from '../../../src/lib/prisma';
 import { generateToken, hashToken, REFRESH_TOKEN_TTL_MS } from '../../../src/lib/token';
-import { refresh } from '../../../src/services/auth.service';
+import { logout, refresh } from '../../../src/services/auth.service';
 
 // Real database. generateToken is wrapped in a spy (real implementation by default)
 // so one test can force a hash collision and make the insert fail
@@ -81,5 +81,39 @@ describe('refresh (PostgreSQL)', () => {
     await prisma.user.update({ where: { id: user.id }, data: { deletedAt: new Date() } });
 
     await expect(refresh(token)).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+  });
+});
+
+describe('logout (PostgreSQL)', () => {
+  it('revokes the token: a refresh with it is refused afterwards', async () => {
+    const { token } = await seed();
+
+    await logout(token);
+
+    const row = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(token) } });
+    expect(row!.revokedAt).toBeInstanceOf(Date);
+    await expect(refresh(token)).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+  });
+
+  it('is idempotent: a second logout keeps the first revocation date', async () => {
+    const { token } = await seed();
+
+    await logout(token);
+    const first = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(token) } });
+    await logout(token);
+    const second = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(token) } });
+
+    expect(second!.revokedAt).toEqual(first!.revokedAt);
+  });
+
+  it('only revokes the given token, not the other sessions of the user', async () => {
+    const { user, token } = await seed();
+    await prisma.refreshToken.create({
+      data: { userId: user.id, tokenHash: hashToken('other-device'), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
+    });
+
+    await logout(token);
+
+    await expect(refresh('other-device')).resolves.toBeDefined();
   });
 });

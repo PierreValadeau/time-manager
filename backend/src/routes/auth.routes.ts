@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { authLimiter } from '../middlewares/rateLimit';
 import validate from '../middlewares/validate';
 import { loginSchema } from '../schemas/auth.schema';
-import { loginHandler, refreshHandler } from '../controllers/auth.controller';
+import { loginHandler, logoutHandler, refreshHandler } from '../controllers/auth.controller';
 
 const router = Router();
 
@@ -11,5 +11,7 @@ const router = Router();
 router.post('/login', authLimiter, validate({ body: loginSchema }), loginHandler);
 
 router.post('/refresh', refreshHandler); 
+
+router.post('/logout', logoutHandler); 
 
 export default router;

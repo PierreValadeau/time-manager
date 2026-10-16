@@ -81,6 +81,17 @@ const login = async (payload: unknown) => {
   return { status: res.status, cookies: res.headers.getSetCookie(), body: await res.json() };
 };
 
+const logout = async (cookieHeader?: string) => {
+  const res = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+    method: 'POST',
+    headers: cookieHeader ? { cookie: cookieHeader } : {},
+  });
+  return { status: res.status, cookies: res.headers.getSetCookie(), text: await res.text() };
+};
+
+const isCleared = (c: string | undefined) => /Expires=Thu, 01 Jan 1970/.test(c ?? '');
+
+
 const cookie = (cookies: string[], name: string) => cookies.find(c => c.startsWith(`${name}=`));
 
 describe('POST /api/v1/auth/login: success', () => {
@@ -233,3 +244,44 @@ describe('POST /api/v1/auth/refresh: failures', () => {
     expect(res.cookies).toHaveLength(0);
   });
 });
+
+describe('POST /api/v1/auth/logout', () => {
+  beforeEach(() => {
+    revokeTokenMock.mockResolvedValue({ count: 1 });  
+  });
+
+  it('answers 204 and revokes the token by its hash', async () => {
+    const res = await logout('refresh_token=old-token');   
+
+    expect(res.status).toBe(204);                          
+    expect(res.text).toBe('');
+    expect(revokeTokenMock.mock.lastCall![0].where)
+      .toEqual({ tokenHash: hashToken('old-token'), revokedAt: null });
+  });
+
+  it('clears both cookies on their own path', async () => {
+    const res = await logout('refresh_token=old-token');
+    const access = cookie(res.cookies, 'access_token'); 
+    const refreshCookie = cookie(res.cookies, 'refresh_token');
+    
+    expect(isCleared(access)).toBe(true);
+    expect(isCleared(refreshCookie)).toBe(true);
+    expect(access).toMatch(/Path=\/(;|$)/);
+    expect(refreshCookie).toMatch(/Path=\/api\/v1\/auth/);
+  });
+
+  it('answers 204 and clears the cookies even without a cookie', async () => {
+    const res = await logout();
+
+    expect(res.status).toBe(204);
+    expect(isCleared(cookie(res.cookies, 'access_token'))).toBe(true);
+    expect(isCleared(cookie(res.cookies, 'refresh_token'))).toBe(true);
+    expect(revokeTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('does not go through authLimiter, shared with login and keyed by IP', async () => {
+    await logout('refresh_token=old-token');
+    expect(authLimiter).not.toHaveBeenCalled();
+  });
+});
+

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 import prisma from '../../../src/lib/prisma';
 import { verifyPassword } from '../../../src/lib/password';
 import { verifyAccessToken } from '../../../src/lib/jwt';
-import { login, refresh } from '../../../src/services/auth.service';
+import { login, refresh, logout } from '../../../src/services/auth.service';
 
 // No database: Prisma is mocked. bcrypt is mocked too.
 // $transaction runs its callback with the same mocked client as tx
@@ -185,3 +185,24 @@ describe('refresh: failures', () => {
     expect(createTokenMock).not.toHaveBeenCalled();
   });
 });
+
+describe('logout', () => {
+  it('revokes the token by its hash, only if it is still unrevoked', async ()  => {
+    revokeTokenMock.mockResolvedValue({ count: 1 }); 
+    await logout(oldToken); 
+    const { where, data } = revokeTokenMock.mock.lastCall![0]; 
+    expect(where).toEqual({ tokenHash: sha256(oldToken), revokedAt: null }); 
+    expect(data.revokedAt).toBeInstanceOf(Date); 
+  }); 
+
+  it('does nothing without a cookie, and does not throw', async () => {
+    await expect(logout(undefined)).resolves.toBeUndefined(); 
+    expect(revokeTokenMock).not.toHaveBeenCalled(); 
+  }); 
+
+  it('does not throw for an unknown or already revoked token', async () => {
+    revokeTokenMock.mockResolvedValue({ count: 0 }); 
+    await expect(logout(oldToken)).resolves.toBeUndefined(); 
+    expect(revokeTokenMock).toHaveBeenCalledTimes(1); 
+  }); 
+}); 
