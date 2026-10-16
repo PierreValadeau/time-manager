@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
-import { login, refresh } from '../services/auth.service'; 
+import { login, refresh, logout } from '../services/auth.service'; 
 import { ACCESS_TOKEN_COOKIE } from "../lib/jwt";
-import { REFRESH_TOKEN_COOKIE, accessCookieOptions, refreshCookieOptions } from "../lib/cookie";
+import { REFRESH_TOKEN_COOKIE, accessCookieOptions, clearAccessCookieOptions, clearRefreshCookieOptions, refreshCookieOptions } from "../lib/cookie";
 
 //POST /auth/login
 export const loginHandler: RequestHandler = async (req, res) => {
@@ -19,4 +19,13 @@ export const refreshHandler: RequestHandler = async (req, res) => {
     res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions); 
 
     res.sendStatus(204); 
+}
+
+// POST /auth/logout
+export const logoutHandler: RequestHandler = async (req, res) => {
+    await logout(req.cookies?.[REFRESH_TOKEN_COOKIE]); 
+    res.clearCookie(ACCESS_TOKEN_COOKIE, clearAccessCookieOptions); 
+    res.clearCookie(REFRESH_TOKEN_COOKIE, clearRefreshCookieOptions); 
+
+    res.sendStatus(204);
 }
