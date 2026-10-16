@@ -5,24 +5,35 @@ import app from '../../../src/app';
 import prisma from '../../../src/lib/prisma';
 import { verifyPassword } from '../../../src/lib/password';
 import { verifyAccessToken } from '../../../src/lib/jwt';
+import { hashToken } from '../../../src/lib/token';
+import { authLimiter } from '../../../src/middlewares/rateLimit';
 
 // Integration test: the real app over HTTP, with only the database and bcrypt mocked
-vi.mock('../../../src/lib/prisma', () => ({
-  default: { user: { findUnique: vi.fn() }, refreshToken: { create: vi.fn() } },
-}));
+vi.mock('../../../src/lib/prisma', () => {
+  const db = {
+    user: { findUnique: vi.fn() },
+    refreshToken: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
+    $transaction: vi.fn(),
+  };
+  db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db));
+  return { default: db };
+});
 vi.mock('../../../src/lib/password', () => ({
   hashPassword: vi.fn().mockResolvedValue('dummy-hash'),
   verifyPassword: vi.fn(),
 }));
 
-// Only authLimiter is bypassed: it would block this file after 5 logins. It is tested in rateLimit.test.ts
+// Only authLimiter is bypassed: it would block this file after 5 logins. It is tested in rateLimit.test.ts.
+// A spy, so the tests can check which routes go through it
 vi.mock('../../../src/middlewares/rateLimit', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../src/middlewares/rateLimit')>()),
-  authLimiter: (_req: unknown, _res: unknown, next: () => void) => next(),
+  authLimiter: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
 }));
 
 
 const findUniqueMock = prisma.user.findUnique as unknown as Mock;
+const findTokenMock = prisma.refreshToken.findUnique as unknown as Mock;
+const revokeTokenMock = prisma.refreshToken.updateMany as unknown as Mock;
 const verifyPasswordMock = verifyPassword as unknown as Mock;
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
@@ -135,5 +146,90 @@ describe('POST /api/v1/auth/login: failures', () => {
       expect(res.cookies).toHaveLength(0);
     }
     expect(wrongPassword.body).toEqual(unknownEmail.body);
+  });
+});
+
+// POST /api/v1/auth/refresh over HTTP, with the given Cookie header (if any)
+const refresh = async (cookieHeader?: string) => {
+  const res = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
+    method: 'POST',
+    headers: cookieHeader ? { cookie: cookieHeader } : {},
+  });
+  return { status: res.status, cookies: res.headers.getSetCookie(), text: await res.text() };
+};
+
+const tokenRow = {
+  id: 'rt1', userId: '001', tokenHash: hashToken('old-token'),
+  expiresAt: new Date(Date.now() + 24 * 3600 * 1000), revokedAt: null,
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  user: { id: '001', role: 'employee', deletedAt: null },
+};
+
+describe('POST /api/v1/auth/refresh: success', () => {
+  beforeEach(() => {
+    findTokenMock.mockResolvedValue(tokenRow);
+    revokeTokenMock.mockResolvedValue({ count: 1 });
+  });
+
+  it('answers 204 with an empty body', async () => {
+    const res = await refresh('refresh_token=old-token');
+    expect(res.status).toBe(204);
+    expect(res.text).toBe('');
+  });
+
+  it('reads the refresh_token cookie and looks it up by its hash', async () => {
+    await refresh('refresh_token=old-token');
+    expect(findTokenMock.mock.lastCall![0].where).toEqual({ tokenHash: hashToken('old-token') });
+  });
+
+  it('sets both cookies again, with the same attributes as login', async () => {
+    const { cookies } = await refresh('refresh_token=old-token');
+    const access = cookie(cookies, 'access_token');
+    const newRefresh = cookie(cookies, 'refresh_token');
+
+    for (const c of [access, newRefresh]) {
+      expect(c).toMatch(/HttpOnly/);
+      expect(c).toMatch(/Secure/);
+      expect(c).toMatch(/SameSite=Strict/);
+    }
+    expect(access).toMatch(/Max-Age=900/);
+    expect(access).toMatch(/Path=\/(;|$)/);
+    expect(newRefresh).toMatch(/Max-Age=604800/);
+    expect(newRefresh).toMatch(/Path=\/api\/v1\/auth/);
+    expect(newRefresh).not.toMatch(/^refresh_token=old-token;/);
+  });
+
+  it('sets an access token that authenticate accepts', async () => {
+    const { cookies } = await refresh('refresh_token=old-token');
+    const token = cookie(cookies, 'access_token')!.split(';')[0].split('=')[1];
+    expect(verifyAccessToken(token)).toEqual({ id: '001', role: 'employee' });
+  });
+
+  it('works without an access token: no authenticate on this route', async () => {
+    const res = await refresh('refresh_token=old-token');
+    expect(res.status).toBe(204);
+  });
+
+  it('does not go through authLimiter, shared with login and keyed by IP', async () => {
+    await refresh('refresh_token=old-token');
+    expect(authLimiter).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/v1/auth/refresh: failures', () => {
+  it('answers 401 without cookies when no refresh_token cookie is sent', async () => {
+    const res = await refresh();
+    expect(res.status).toBe(401);
+    expect(JSON.parse(res.text).error).toMatchObject({ code: 'UNAUTHENTICATED', message: 'Session absente ou expirée' });
+    expect(res.cookies).toHaveLength(0);
+    expect(findTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 401 without cookies for an unknown token', async () => {
+    findTokenMock.mockResolvedValue(null);
+    const res = await refresh('refresh_token=unknown');
+    expect(res.status).toBe(401);
+    expect(JSON.parse(res.text).error.code).toBe('UNAUTHENTICATED');
+    expect(res.cookies).toHaveLength(0);
   });
 });
