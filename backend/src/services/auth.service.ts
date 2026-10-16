@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { hashPassword, verifyPassword } from '../lib/password';
@@ -7,9 +8,10 @@ import { toFullUser, userSelect } from './user.service';
 import type { LoginInput } from '../schemas/auth.schema';
 
 
-async function issueRefreshToken(userId: string) {
-    const token = generateToken(); 
-    await prisma.refreshToken.create({
+// db: pass the transaction client (tx) to write inside a transaction, defaults to prisma
+async function issueRefreshToken(userId: string, db: Prisma.TransactionClient = prisma) {
+    const token = generateToken();
+    await db.refreshToken.create({
         data: { userId, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
     }); 
 
@@ -18,6 +20,9 @@ async function issueRefreshToken(userId: string) {
 //same error for every failure 
 const invalidCredentials = () => 
     new AppError(401, 'UNAUTHENTICATED', 'Email ou mot de passe incorrect'); 
+
+const invalidSession = () => 
+    new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
 
 //compare against when no usable hash exists
 const dummyHash = hashPassword('dummy-password'); 
@@ -42,4 +47,43 @@ export async function login({ email, password }: LoginInput) {
         refreshToken: await issueRefreshToken(user.id),
         user: toFullUser(profile), 
     }; 
+}
+
+// POST /auth/refresh
+export async function refresh(refreshToken: unknown) {
+    if (typeof refreshToken !== 'string') throw invalidSession(); 
+
+    const row = await prisma.refreshToken.findUnique({
+        where: { tokenHash: hashToken(refreshToken) }, 
+        include: {
+            user: {
+                select: {
+                    id: true, 
+                    role: true, 
+                    deletedAt: true
+                }
+            }
+        }
+    });
+
+    if (!row || row.revokedAt || row.expiresAt < new Date() || row.user.deletedAt) throw invalidSession();
+
+    // Revoke the old token and issue the new one as a single unit:
+    // if the insert fails, PostgreSQL rolls the revocation back and the old token stays valid
+    const newRefreshToken = await prisma.$transaction(async tx => {
+        // revokedAt: null in the filter: of two concurrent refreshes, only one gets count === 1
+        const revoked = await tx.refreshToken.updateMany({
+            where: { id: row.id, revokedAt: null },
+            data: { revokedAt: new Date() }
+        });
+
+        if (revoked.count !== 1) throw invalidSession();
+
+        return issueRefreshToken(row.user.id, tx);
+    });
+
+    return {
+        accessToken: signAccessToken({ id: row.user.id, role: row.user.role }),
+        refreshToken: newRefreshToken,
+    };
 }
