@@ -87,3 +87,13 @@ export async function refresh(refreshToken: unknown) {
         refreshToken: newRefreshToken,
     };
 }
+
+// POST /auth/logout: never fails
+export async function logout(refreshToken: unknown) {
+    if (typeof refreshToken !== 'string') return; 
+
+    await prisma.refreshToken.updateMany({
+        where: { tokenHash: hashToken(refreshToken), revokedAt: null }, 
+        data: { revokedAt: new Date() },
+    }); 
+} 
