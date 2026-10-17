@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vite
 import prisma from '../../../src/lib/prisma';
 import { verifyPassword } from '../../../src/lib/password';
 import { verifyAccessToken } from '../../../src/lib/jwt';
-import { login, refresh, logout } from '../../../src/services/auth.service';
+import { login, refresh, logout, getMe } from '../../../src/services/auth.service';
+import { userSelect } from '../../../src/services/user.service'; 
 
 // No database: Prisma is mocked. bcrypt is mocked too.
 // $transaction runs its callback with the same mocked client as tx
@@ -206,3 +207,38 @@ describe('logout', () => {
     expect(revokeTokenMock).toHaveBeenCalledTimes(1); 
   }); 
 }); 
+
+describe('getMe', () => {
+  beforeEach(() => {
+    findUniqueMock.mockResolvedValue({ ...dbUser, passwordHash: undefined }); 
+  }); 
+
+  it('returns the full profile with teams without deletedAt', async () => {
+    const profile = await getMe('001'); 
+    expect(profile).toEqual({
+      id: '001', firstName: 'Test', lastName: 'Testy', email: input.email,
+      phoneNumber: null, role: 'employee',
+      createdAt: dbUser.createdAt, updatedAt: dbUser.updatedAt,
+      teams: [{ id: 't1', name: 'Team A' }],
+    }); 
+    expect(profile).not.toHaveProperty('deletedAt'); 
+  }); 
+
+  it('looks the user up by id and never selects the password hash', async () => {
+    await getMe('001'); 
+    const { where, select } = findUniqueMock.mock.lastCall![0]; 
+    expect(where).toEqual({ id: '001' }); 
+    expect(select).toEqual({ ...userSelect, deletedAt: true }); 
+    expect(select.passwordHash).toBeUndefined(); 
+  }); 
+
+  it('answers 401 when the user no longer exists', async () => {
+    findUniqueMock.mockResolvedValue(null); 
+    await expect(getMe('001')).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED', message: 'Session absente ou expirée' }); 
+  }); 
+
+  it('answers 401 for a soft-deleted user', async () => {
+    findUniqueMock.mockResolvedValue({ ...dbUser, passwordHash: undefined, deletedAt: new Date() }); 
+    await expect(getMe('001')).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED', message: 'Session absente ou expirée' })
+  })
+})
