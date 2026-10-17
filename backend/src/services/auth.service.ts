@@ -97,3 +97,19 @@ export async function logout(refreshToken: unknown) {
         data: { revokedAt: new Date() },
     }); 
 } 
+
+// GET /auth/me
+export async function getMe(userId: string) {
+    const user = await prisma.user.findUnique({
+        where: { id: userId }, 
+        select: { ...userSelect, deletedAt: true },
+    }); 
+
+    if (!user) throw invalidSession(); 
+
+    const { deletedAt, ...profile } = user;
+
+    if (deletedAt) throw invalidSession(); 
+
+    return toFullUser(profile); 
+}

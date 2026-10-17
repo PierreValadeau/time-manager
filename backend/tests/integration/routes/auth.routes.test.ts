@@ -3,8 +3,9 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import app from '../../../src/app';
 import prisma from '../../../src/lib/prisma';
+import jwt from 'jsonwebtoken'; 
 import { verifyPassword } from '../../../src/lib/password';
-import { verifyAccessToken } from '../../../src/lib/jwt';
+import { verifyAccessToken, signAccessToken } from '../../../src/lib/jwt';
 import { hashToken } from '../../../src/lib/token';
 import { authLimiter } from '../../../src/middlewares/rateLimit';
 
@@ -88,6 +89,15 @@ const logout = async (cookieHeader?: string) => {
   });
   return { status: res.status, cookies: res.headers.getSetCookie(), text: await res.text() };
 };
+
+// GET /api/v1/auth/me over HTTP, with the given Cookie header (if any)
+const me = async (cookieHeader?: string) => {
+  const res = await fetch(`${baseUrl}/api/v1/auth/me`, {
+    headers: cookieHeader ? { cookie: cookieHeader } : {},
+  });
+  return { status: res.status, cookies: res.headers.getSetCookie(), body: await res.json() };
+};
+
 
 const isCleared = (c: string | undefined) => /Expires=Thu, 01 Jan 1970/.test(c ?? '');
 
@@ -284,4 +294,67 @@ describe('POST /api/v1/auth/logout', () => {
     expect(authLimiter).not.toHaveBeenCalled();
   });
 });
+
+describe('GET /api/v1/auth/me', () => {
+  beforeEach(() => {
+    findUniqueMock.mockResolvedValue({ ...dbUser, passwordHash: undefined });
+  });
+
+  it('answers 200 with the full profile and no secret in the body', async () => {
+    const token = signAccessToken({ id: '001', role: 'employee' });
+    const res = await me(`access_token=${token}`);
+    expect(res.status).toBe(200); 
+    expect(res.body).toEqual({
+      id: '001', firstName: 'Test', lastName: 'Testy',
+      email: 'test.testy@trinity.com', phoneNumber: null, role: 'employee',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      teams: [{ id: 't1', name: 'Team A' }],
+    });
+    
+    expect(JSON.stringify(res.body)).not.toMatch(/token|hash|deletedAt/i); 
+  });
+
+  it('looks up the user from the token, not from the request', async () => {
+    const token = signAccessToken({ id: '001', role: 'employee' });
+    await me(`access_token=${token}`);
+    expect(findUniqueMock.mock.lastCall![0].where)
+      .toEqual({ id: '001' }); 
+  });
+
+  it('answers 401 without an access token, before touching the database', async () => {
+    const res = await me();
+    expect(res.status).toBe(401); 
+    expect(res.body.error.code).toBe('UNAUTHENTICATED'); 
+    expect(findUniqueMock).not.toHaveBeenCalled(); 
+  });
+
+  it('answers 401 for an expired access token', async () => {
+    const expired = jwt.sign({ role: 'employee' }, SECRET, { subject: '001', expiresIn: -10, algorithm: 'HS256' });
+    const res = await me(`access_token=${expired}`); 
+    expect(res.status).toBe(401); 
+    expect(findUniqueMock).not.toHaveBeenCalled(); 
+  });
+
+  it('answers 401 for a token signed with another secret', async () => {
+    const forged = jwt.sign({ role: 'admin' }, 'another-secret-that-is-at-least-32-chars', { subject: '001', algorithm: 'HS256' });
+    const res = await me(`access_token=${forged}`); 
+    expect(res.status).toBe(401); 
+    expect(findUniqueMock).not.toHaveBeenCalled(); 
+  });
+
+  it('answers 401 when the account was deleted after the token was issued', async () => {
+    findUniqueMock.mockResolvedValue({ ...dbUser, passwordHash: undefined, deletedAt: new Date() });
+    const token = signAccessToken({ id: '001', role: 'employee' });
+    const res = await me(`access_token=${token}`); 
+    expect(res.status).toBe(401); 
+  });
+
+  it('does not touch the cookies', async () => {
+    const token = signAccessToken({ id: '001', role: 'employee' });
+    const res = await me(`access_token=${token}`);
+    expect(res.cookies.length).toBe(0); 
+  });
+});
+
 
