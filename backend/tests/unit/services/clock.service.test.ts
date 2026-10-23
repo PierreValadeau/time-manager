@@ -5,6 +5,7 @@ import AppError from '../../../src/errors/AppError';
 import {
   authorizeClockRead,
   clockInRange,
+  correctClock,
   getClockSummary,
   listSessions,
   toggleClock,
@@ -14,10 +15,19 @@ import {
 // No database: the transaction runs its callback on the same mocked client
 vi.mock('../../../src/lib/prisma', () => {
   const client = {
-    clock: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    clock: {
+      findFirst: vi.fn(),
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
+      update: vi.fn(),
+      create: vi.fn(),
+      findMany: vi.fn(),
+      count: vi.fn(),
+    },
     user: { findUnique: vi.fn() },
     teamMember: { findFirst: vi.fn() },
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
   };
   client.$transaction.mockImplementation((fn: (tx: typeof client) => unknown) => fn(client));
   return { default: client };
@@ -30,6 +40,9 @@ const findManyMock = prisma.clock.findMany as unknown as Mock;
 const countMock = prisma.clock.count as unknown as Mock;
 const findUserMock = prisma.user.findUnique as unknown as Mock;
 const findMembershipMock = prisma.teamMember.findFirst as unknown as Mock;
+const findClockMock = prisma.clock.findUnique as unknown as Mock;
+const updateMock = prisma.clock.update as unknown as Mock;
+const queryRawMock = prisma.$queryRaw as unknown as Mock;
 
 const NOW = new Date('2026-10-07T16:00:00Z');
 const USER_ID = 'user-id';
@@ -292,5 +305,156 @@ describe('getClockSummary', () => {
     ]);
     const result = await getClockSummary(USER_ID, { from: '2026-10-05', to: '2026-10-05', groupBy: 'day' }, options);
     expect(result.totalMinutes).toBe(960);
+  });
+});
+
+describe('correctClock', () => {
+  const MANAGER = { id: 'manager-id', role: 'manager' as const };
+  const ADMIN = { id: 'admin-id', role: 'admin' as const };
+  const body = {
+    clockIn: new Date('2026-10-06T07:00:00Z'),
+    clockOut: new Date('2026-10-06T15:30:00Z'),
+    reason: 'Oubli de pointage au départ',
+  };
+
+  beforeEach(() => {
+    findClockMock.mockResolvedValue({ userId: USER_ID });
+    findMembershipMock.mockResolvedValue({ teamId: 'team-id' });
+    findFirstMock.mockResolvedValue(null);
+    queryRawMock.mockResolvedValue([{ id: USER_ID }]);
+    updateMock.mockImplementation(({ data }) =>
+      Promise.resolve({ ...clock('2026-10-06T07:00:00Z'), ...data })
+    );
+  });
+
+  it('stores the new times, the author and the reason, and returns the session', async () => {
+    const session = await correctClock(MANAGER, 'clock-id', body, NOW, 14);
+
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: 'clock-id' },
+      data: {
+        clockIn: body.clockIn,
+        clockOut: body.clockOut,
+        correctedById: 'manager-id',
+        correctionReason: body.reason,
+      },
+    });
+    expect(session).toEqual({
+      id: 'clock-id',
+      userId: USER_ID,
+      clockIn: body.clockIn,
+      clockOut: body.clockOut,
+      workedMinutes: 510,
+      status: 'closed',
+    });
+  });
+
+  it('answers 404 for an unknown session, before any scope check', async () => {
+    findClockMock.mockResolvedValue(null);
+
+    await expect(correctClock(MANAGER, 'clock-id', body, NOW, 14)).rejects.toMatchObject({
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+    expect(findMembershipMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 to a manager outside the teams of the employee', async () => {
+    findMembershipMock.mockResolvedValue(null);
+
+    await expect(correctClock(MANAGER, 'clock-id', body, NOW, 14)).rejects.toMatchObject({
+      status: 403,
+      code: 'FORBIDDEN',
+    });
+    expect(findMembershipMock).toHaveBeenCalledWith({
+      where: { userId: USER_ID, team: { managerId: 'manager-id' } },
+      select: { teamId: true },
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 to a manager correcting their own session, even in their own team', async () => {
+    findClockMock.mockResolvedValue({ userId: 'manager-id' });
+
+    await expect(correctClock(MANAGER, 'clock-id', body, NOW, 14)).rejects.toMatchObject({ status: 403 });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 to an employee, as a second line behind requireRole', async () => {
+    await expect(
+      correctClock({ id: 'other-id', role: 'employee' }, 'clock-id', body, NOW, 14)
+    ).rejects.toMatchObject({ status: 403 });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('lets the admin correct any session without a team lookup', async () => {
+    const session = await correctClock(ADMIN, 'clock-id', body, NOW, 14);
+
+    expect(findMembershipMock).not.toHaveBeenCalled();
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ correctedById: 'admin-id' }) })
+    );
+    expect(session.status).toBe('closed');
+  });
+
+  it('refuses a clockOut in the future with a 400 on clockOut', async () => {
+    const error = await correctClock(
+      MANAGER,
+      'clock-id',
+      { ...body, clockIn: new Date('2026-10-07T08:00:00Z'), clockOut: new Date('2026-10-07T16:00:01Z') },
+      NOW,
+      14
+    ).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(AppError);
+    expect(error).toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      details: [{ field: 'clockOut', issue: 'too_big' }],
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a clockOut equal to now', async () => {
+    await correctClock(MANAGER, 'clock-id', { ...body, clockIn: new Date('2026-10-07T08:00:00Z'), clockOut: NOW }, NOW, 14);
+    expect(updateMock).toHaveBeenCalled();
+  });
+
+  it('locks the employee, then looks for another session overlapping [clockIn, clockOut)', async () => {
+    await correctClock(MANAGER, 'clock-id', body, NOW, 14);
+
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    // Tagged template: the user id is a bound parameter, not concatenated SQL
+    expect(queryRawMock.mock.calls[0].slice(1)).toEqual([USER_ID]);
+    expect(findFirstMock).toHaveBeenCalledWith({
+      where: {
+        userId: USER_ID,
+        id: { not: 'clock-id' },
+        clockIn: { lt: body.clockOut },
+        OR: [{ clockOut: null }, { clockOut: { gt: body.clockIn } }],
+      },
+      select: { id: true },
+    });
+    expect(queryRawMock.mock.invocationCallOrder[0]).toBeLessThan(findFirstMock.mock.invocationCallOrder[0]);
+  });
+
+  it('answers 409 when the corrected session would overlap another one', async () => {
+    findFirstMock.mockResolvedValue({ id: 'other-clock' });
+
+    await expect(correctClock(MANAGER, 'clock-id', body, NOW, 14)).rejects.toMatchObject({
+      status: 409,
+      code: 'CONFLICT',
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('takes a forgotten session out of the anomaly state, even beyond the threshold', async () => {
+    // Closed by the next clock-in after 24 h, corrected to 15 h of work
+    const long = { ...body, clockOut: new Date('2026-10-06T22:00:00Z') };
+
+    const session = await correctClock(MANAGER, 'clock-id', long, NOW, 14);
+
+    expect(session).toMatchObject({ status: 'closed', workedMinutes: 900 });
   });
 });
