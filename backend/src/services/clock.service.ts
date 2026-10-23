@@ -2,7 +2,11 @@ import { Prisma, type Clock } from '@prisma/client';
 import { DateTime } from 'luxon';
 import AppError from '../errors/AppError';
 import prisma from '../lib/prisma';
-import type { ClockHistoryQuery, ClockSummaryQuery } from '../schemas/clock.schema';
+import type {
+  ClockHistoryQuery,
+  ClockSummaryQuery,
+  CorrectClockBody,
+} from '../schemas/clock.schema';
 import {
   sessionMinutes,
   sessionStatus,
@@ -197,4 +201,63 @@ export async function getClockSummary(
 
   const summary = summarizeSessions(sessions, { groupBy, timezone, now, anomalyThresholdHours });
   return { userId, from, to, groupBy, ...summary };
+}
+
+// PUT /clocks/:id: a manager of the employee, or the admin, rewrites a session.
+// The route already refused employees (requireRole), so no lookup is made for them.
+export async function correctClock(
+  caller: Caller,
+  clockId: string,
+  body: CorrectClockBody,
+  now: Date,
+  anomalyThresholdHours: number
+): Promise<SessionDto> {
+  const { clockIn, clockOut, reason } = body;
+
+  // A missing session is a 404, not a 403 (same order as authorizeClockRead)
+  const existing = await prisma.clock.findUnique({ where: { id: clockId }, select: { userId: true } });
+  if (!existing) throw new AppError(404, 'NOT_FOUND', 'Session introuvable');
+
+  // Contract, section 6: a manager's clocks are corrected by the admin or by the manager of
+  // one of their teams, never by themselves (even as a member of their own team)
+  if (isSelf(caller, existing.userId)) throw forbidden();
+  if (!(await isManagerOfEmployee(caller, existing.userId))) throw forbidden();
+
+  // Only a past session can be corrected: clockOut > clockIn, so clockIn is past too
+  if (clockOut > now) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Le champ clockOut est invalide', [
+      { field: 'clockOut', issue: 'too_big' },
+    ]);
+  }
+
+  const updated = await prisma.$transaction(async tx => {
+    // Locks the employee: two corrections of the same employee cannot both pass the
+    // overlap check below and then overlap each other
+    await tx.$queryRaw`SELECT id FROM users WHERE id = ${existing.userId}::uuid FOR UPDATE`;
+
+    // Sessions are [clockIn, clockOut): touching sessions do not overlap, an open session
+    // runs until further notice
+    const overlapping = await tx.clock.findFirst({
+      where: {
+        userId: existing.userId,
+        id: { not: clockId },
+        clockIn: { lt: clockOut },
+        OR: [{ clockOut: null }, { clockOut: { gt: clockIn } }],
+      },
+      select: { id: true },
+    });
+    if (overlapping) {
+      throw new AppError(409, 'CONFLICT', 'La session chevauche une autre session de ce salarié');
+    }
+
+    // A concurrent POST /clocks closing this session waits for this UPDATE, then matches
+    // no open session and answers 409 (see toggleClock)
+    return tx.clock.update({
+      where: { id: clockId },
+      data: { clockIn, clockOut, correctedById: caller.id, correctionReason: reason },
+    });
+  });
+
+  // correctedById is set: the session leaves the anomaly state, even beyond the threshold
+  return toSessionDto(updated, now, anomalyThresholdHours);
 }

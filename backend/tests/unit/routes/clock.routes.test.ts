@@ -4,12 +4,15 @@ import type { AddressInfo } from 'node:net';
 import app from '../../../src/app';
 import prisma from '../../../src/lib/prisma';
 import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
+import { userLimiter } from '../../../src/middlewares/rateLimit';
 
 // The real app (middlewares, route, controller, service), with the database mocked
 vi.mock('../../../src/lib/prisma', () => {
   const client = {
-    clock: { findFirst: vi.fn(), updateMany: vi.fn(), create: vi.fn() },
+    clock: { findFirst: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn(), create: vi.fn() },
+    teamMember: { findFirst: vi.fn() },
     $transaction: vi.fn(),
+    $queryRaw: vi.fn(),
   };
   client.$transaction.mockImplementation((fn: (tx: typeof client) => unknown) => fn(client));
   return { default: client };
@@ -18,6 +21,10 @@ vi.mock('../../../src/lib/prisma', () => {
 const findFirstMock = prisma.clock.findFirst as unknown as Mock;
 const updateManyMock = prisma.clock.updateMany as unknown as Mock;
 const createMock = prisma.clock.create as unknown as Mock;
+const findClockMock = prisma.clock.findUnique as unknown as Mock;
+const updateMock = prisma.clock.update as unknown as Mock;
+const findMembershipMock = prisma.teamMember.findFirst as unknown as Mock;
+const queryRawMock = prisma.$queryRaw as unknown as Mock;
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
 const NOW = new Date('2026-10-07T16:00:00Z');
@@ -145,5 +152,189 @@ describe('POST /api/v1/clocks: toggle', () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe('CONFLICT');
+  });
+});
+
+// PUT /clocks/:id. Camille is in Nadia's team; Bruno is in no team of Nadia's
+const CAMILLE = '11111111-1111-4111-8111-111111111111';
+const BRUNO = '22222222-2222-4222-8222-222222222222';
+const NADIA = '33333333-3333-4333-8333-333333333333';
+const ADMIN = '44444444-4444-4444-8444-444444444444';
+const CAMILLE_CLOCK = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const BRUNO_CLOCK = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const NADIA_CLOCK = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const UNKNOWN_CLOCK = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+
+const OWNERS: Record<string, string> = { [CAMILLE_CLOCK]: CAMILLE, [BRUNO_CLOCK]: BRUNO, [NADIA_CLOCK]: NADIA };
+
+type Caller = { id: string; role: 'employee' | 'manager' | 'admin' } | null;
+const camille: Caller = { id: CAMILLE, role: 'employee' };
+const nadia: Caller = { id: NADIA, role: 'manager' };
+const admin: Caller = { id: ADMIN, role: 'admin' };
+
+const correction = {
+  clockIn: '2026-10-06T07:00:00Z',
+  clockOut: '2026-10-06T15:30:00Z',
+  reason: 'Oubli de pointage au départ',
+};
+
+const putClock = async (caller: Caller, id: string, payload: unknown = correction) => {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (caller) headers.cookie = `${ACCESS_TOKEN_COOKIE}=${signAccessToken(caller)}`;
+  const res = await fetch(`${baseUrl}/api/v1/clocks/${id}`, {
+    method: 'PUT',
+    headers,
+    body: JSON.stringify(payload),
+  });
+  return { status: res.status, body: await res.json() };
+};
+
+describe('PUT /api/v1/clocks/:id', () => {
+  beforeEach(async () => {
+    await Promise.all([CAMILLE, NADIA, ADMIN].map(id => userLimiter.resetKey(`user:${id}`)));
+    findClockMock.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      OWNERS[where.id] ? { userId: OWNERS[where.id] } : null
+    );
+    findMembershipMock.mockImplementation(
+      async ({ where }: { where: { userId: string; team: { managerId: string } } }) =>
+        // Nadia is also a member of her own team: she must still not correct herself
+        [CAMILLE, NADIA].includes(where.userId) && where.team.managerId === NADIA ? { teamId: 'team-id' } : null
+    );
+    findFirstMock.mockResolvedValue(null);
+    queryRawMock.mockResolvedValue([]);
+    updateMock.mockImplementation(async ({ where, data }) => ({
+      ...dbClock(OWNERS[where.id], data.clockIn),
+      id: where.id,
+      ...data,
+    }));
+  });
+
+  it('answers 401 without session', async () => {
+    const res = await putClock(null, CAMILLE_CLOCK);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('answers 403 to an employee, without any lookup, even on an unknown session', async () => {
+    for (const id of [CAMILLE_CLOCK, UNKNOWN_CLOCK]) {
+      const res = await putClock(camille, id);
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
+    }
+    // Even with an invalid body: the role is checked first
+    expect((await putClock(camille, CAMILLE_CLOCK, {})).status).toBe(403);
+    expect(findClockMock).not.toHaveBeenCalled();
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('lets the manager of the employee correct, and stores author and reason', async () => {
+    const res = await putClock(nadia, CAMILLE_CLOCK);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: CAMILLE_CLOCK,
+      userId: CAMILLE,
+      clockIn: correction.clockIn.replace('Z', '.000Z'),
+      clockOut: correction.clockOut.replace('Z', '.000Z'),
+      workedMinutes: 510,
+      status: 'closed',
+    });
+    expect(updateMock).toHaveBeenCalledWith({
+      where: { id: CAMILLE_CLOCK },
+      data: {
+        clockIn: new Date(correction.clockIn),
+        clockOut: new Date(correction.clockOut),
+        correctedById: NADIA,
+        correctionReason: correction.reason,
+      },
+    });
+  });
+
+  it('lets the admin correct any session, a manager\'s included', async () => {
+    const res = await putClock(admin, NADIA_CLOCK);
+    expect(res.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ correctedById: ADMIN }) }));
+  });
+
+  it('answers 403 to a manager outside the teams of the employee', async () => {
+    const res = await putClock(nadia, BRUNO_CLOCK);
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 to a manager correcting their own session', async () => {
+    const res = await putClock(nadia, NADIA_CLOCK);
+    expect(res.status).toBe(403);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 for an unknown session', async () => {
+    const res = await putClock(nadia, UNKNOWN_CLOCK);
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('answers 400 for an id that is not a UUID', async () => {
+    const res = await putClock(nadia, 'not-a-uuid');
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([{ field: 'id', issue: 'invalid_format' }]);
+  });
+
+  it.each([
+    ['missing', { clockIn: correction.clockIn, clockOut: correction.clockOut }],
+    ['blank', { ...correction, reason: '   ' }],
+  ])('answers 400 when the reason is %s', async (_case, payload) => {
+    const res = await putClock(nadia, CAMILLE_CLOCK, payload);
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.details).toEqual([expect.objectContaining({ field: 'reason' })]);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['before', '2026-10-06T06:00:00Z'],
+    ['equal to', correction.clockIn],
+  ])('answers 400 when clockOut is %s clockIn', async (_case, clockOut) => {
+    const res = await putClock(nadia, CAMILLE_CLOCK, { ...correction, clockOut });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([{ field: 'clockOut', issue: 'custom' }]);
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when clockOut is null: a correction closes the session', async () => {
+    const res = await putClock(nadia, CAMILLE_CLOCK, { ...correction, clockOut: null });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([expect.objectContaining({ field: 'clockOut' })]);
+  });
+
+  it('answers 400 when clockOut is in the future (server time)', async () => {
+    const res = await putClock(nadia, CAMILLE_CLOCK, {
+      ...correction,
+      clockIn: '2026-10-07T08:00:00Z',
+      clockOut: '2026-10-07T16:00:01Z',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: [{ field: 'clockOut', issue: 'too_big' }],
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 when the session would overlap another one', async () => {
+    findFirstMock.mockResolvedValue({ id: 'other-clock' });
+
+    const res = await putClock(nadia, CAMILLE_CLOCK);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+    expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('turns a forgotten session into a closed one counted in full, even beyond 14 h', async () => {
+    const res = await putClock(nadia, CAMILLE_CLOCK, { ...correction, clockOut: '2026-10-06T22:00:00Z' });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ status: 'closed', workedMinutes: 900 });
   });
 });
