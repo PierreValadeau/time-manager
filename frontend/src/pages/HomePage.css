@@ -1,0 +1,125 @@
+/* Clock screen, as on the prototype home page: hero across the full width, cards below */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 16px;
+}
+
+.clock-hero {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 28px 32px;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+/* On duty: accent glow from the bottom-left corner */
+.clock-hero.is-on-duty {
+  background: radial-gradient(90% 140% at 0% 100%, var(--color-accent-900), var(--color-surface) 65%);
+  box-shadow: 0 0 0 1px var(--color-accent-700);
+}
+
+.clock-hero-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.clock-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-neutral-300);
+}
+.clock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-neutral-600);
+}
+.is-on-duty .clock-dot {
+  background: var(--color-accent);
+  box-shadow: 0 0 10px var(--color-accent);
+}
+
+.clock-time {
+  font-size: 72px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+/* Large text: 3:1 against the surface is enough (WCAG 1.4.3) */
+.clock-seconds {
+  color: var(--color-neutral-600);
+}
+
+.clock-hero-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-width: min(240px, 100%);
+  max-width: 340px;
+}
+
+.clock-button {
+  min-height: 52px;
+  font-size: 16px;
+}
+/* The accent reaches only 4.43:1 on accent-900, under the glow of the on-duty hero */
+.is-on-duty .clock-button {
+  color: var(--color-accent-400);
+}
+
+/* Empty live regions take no room */
+.clock-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.clock-messages:not(:has(.alert)) {
+  margin-top: -12px;
+}
+
+.day-events {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.day-event {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  background: var(--rule);
+}
+.day-event-icon {
+  flex: none;
+  color: var(--color-accent);
+}
+.day-event-label {
+  flex: 1;
+}
+.day-event-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-neutral-300);
+}
+
+@media (max-width: 767px) {
+  .clock-hero {
+    padding: 20px;
+  }
+  .clock-time {
+    font-size: 56px;
+  }
+  .clock-hero-actions {
+    max-width: none;
+  }
+}
