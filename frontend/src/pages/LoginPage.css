@@ -1,0 +1,126 @@
+/* Two columns on desktop (form, decorative clock), form only on mobile */
+.login-page {
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  background: var(--color-bg);
+}
+
+.login-page .login-main {
+  justify-content: center;
+  gap: 28px;
+  width: 100%;
+  max-width: 460px;
+  padding: 48px 56px;
+  overflow: visible;
+}
+
+/* The brand is padded for the sidebar links; here it aligns with the form */
+.login-main .brand {
+  padding: 0;
+}
+
+.login-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-intro h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.login-intro p {
+  margin: 0;
+}
+
+.login-separator {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-500);
+}
+
+.login-separator::before,
+.login-separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, transparent, var(--color-divider));
+}
+
+.login-separator::after {
+  background: linear-gradient(to left, transparent, var(--color-divider));
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.login-link {
+  font-size: 13px;
+}
+
+.login-aside {
+  margin: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 48px;
+  border-radius: var(--radius-lg);
+  background: radial-gradient(120% 90% at 20% 100%, var(--color-accent-900), var(--color-surface) 70%);
+  box-shadow: var(--shadow-sm);
+}
+
+.login-clock {
+  margin: 0;
+  font-size: 88px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+}
+
+.login-rule {
+  width: 64px;
+  height: 2px;
+  background: var(--color-accent);
+}
+
+.login-tagline {
+  margin: 0;
+  max-width: 360px;
+  font-size: 18px;
+  color: var(--color-neutral-300);
+  text-wrap: pretty;
+}
+
+@media (max-width: 767px) {
+  .login-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .login-page .login-main {
+    justify-content: flex-start;
+    padding: calc(48px + env(safe-area-inset-top)) 16px 32px;
+  }
+
+  .login-aside {
+    display: none;
+  }
+}
