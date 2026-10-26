@@ -1,9 +1,14 @@
 import type { RequestHandler } from 'express';
 import AppError from '../errors/AppError';
 import { anomalyThresholdHours, appTimezone } from '../lib/config';
-import type { ClockHistoryQuery, ClockSummaryQuery } from '../schemas/clock.schema';
+import type {
+  ClockHistoryQuery,
+  ClockSummaryQuery,
+  CorrectClockBody,
+} from '../schemas/clock.schema';
 import {
   authorizeClockRead,
+  correctClock,
   getClockSummary,
   getCurrentSession,
   listSessions,
@@ -18,6 +23,23 @@ export const toggleClockHandler: RequestHandler = async (req, res) => {
   // The body is ignored: the time is the server's, never the client's
   const { action, session } = await toggleClock(req.user.id, new Date(), anomalyThresholdHours());
   res.status(action === 'clockIn' ? 201 : 200).json(session);
+};
+
+// PUT /clocks/:id
+export const correctClockHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
+  }
+  // Parsed by validate() with correctClockSchema: dates are already Date objects
+  const body = req.body as CorrectClockBody;
+  const session = await correctClock(
+    req.user,
+    req.params.id,
+    body,
+    new Date(),
+    anomalyThresholdHours()
+  );
+  res.json(session);
 };
 
 // GET /users/:id/clocks/current

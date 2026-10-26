@@ -45,3 +45,30 @@ export const clockSummaryQuerySchema = z
   });
 
 export type ClockSummaryQuery = z.infer<typeof clockSummaryQuerySchema>;
+
+// Free text, but bounded: it is stored with the session
+export const MAX_REASON_LENGTH = 500;
+
+// ISO 8601 instant with Z or an offset (2026-10-05T07:00:00Z), parsed into a Date
+const instant = z.iso.datetime({ offset: true }).transform(value => new Date(value));
+
+// PUT /clocks/:id: every editable field (contract, section 1), the reason is mandatory.
+// A correction always closes the session: clockOut cannot be null
+export const correctClockSchema = z
+  .object({
+    clockIn: instant,
+    clockOut: instant,
+    reason: z.string().trim().min(1).max(MAX_REASON_LENGTH),
+  })
+  // Same rule as the CHECK clocks_out_after_in, answered as a 400 instead of a 500.
+  .refine(
+    body =>
+      !(body.clockIn instanceof Date && body.clockOut instanceof Date) ||
+      body.clockOut > body.clockIn,
+    {
+      path: ['clockOut'],
+      message: 'clockOut must be after clockIn',
+    }
+  );
+
+export type CorrectClockBody = z.infer<typeof correctClockSchema>;
