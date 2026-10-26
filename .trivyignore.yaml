@@ -18,3 +18,9 @@ vulnerabilities:
       - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
     statement: undici bundled in the npm CLI, no npm release with the fix yet
     expired_at: 2026-12-31
+  - id: CVE-2026-109869
+    paths:
+      - "usr/local/lib/node_modules/npm/node_modules/undici/package.json"
+    statement: undici bundled in the npm CLI, no npm release with the fix yet (npm 12.2.1 ships undici 6.29.0, fix is 6.29.1)
+    expired_at: 2026-12-31
+
