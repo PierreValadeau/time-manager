@@ -197,8 +197,8 @@ describe('PUT /api/v1/clocks/:id', () => {
     );
     findMembershipMock.mockImplementation(
       async ({ where }: { where: { userId: string; team: { managerId: string } } }) =>
-        // Nadia is also a member of her own team: she must still not correct herself
-        [CAMILLE, NADIA].includes(where.userId) && where.team.managerId === NADIA ? { teamId: 'team-id' } : null
+        // Nadia manages Camille's team but is a member of no team herself
+        where.userId === CAMILLE && where.team.managerId === NADIA ? { teamId: 'team-id' } : null
     );
     findFirstMock.mockResolvedValue(null);
     queryRawMock.mockResolvedValue([]);
@@ -263,10 +263,13 @@ describe('PUT /api/v1/clocks/:id', () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it('answers 403 to a manager correcting their own session', async () => {
+  it('lets a manager correct their own session, even outside any team', async () => {
     const res = await putClock(nadia, NADIA_CLOCK);
-    expect(res.status).toBe(403);
-    expect(updateMock).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(res.body.userId).toBe(NADIA);
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ correctedById: NADIA }) })
+    );
   });
 
   it('answers 404 for an unknown session', async () => {

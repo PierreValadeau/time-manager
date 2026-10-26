@@ -374,11 +374,16 @@ describe('correctClock', () => {
     expect(updateMock).not.toHaveBeenCalled();
   });
 
-  it('answers 403 to a manager correcting their own session, even in their own team', async () => {
+  it('lets a manager correct their own session, without a team lookup', async () => {
     findClockMock.mockResolvedValue({ userId: 'manager-id' });
+    findMembershipMock.mockResolvedValue(null);
 
-    await expect(correctClock(MANAGER, 'clock-id', body, NOW, 14)).rejects.toMatchObject({ status: 403 });
-    expect(updateMock).not.toHaveBeenCalled();
+    await correctClock(MANAGER, 'clock-id', body, NOW, 14);
+
+    expect(findMembershipMock).not.toHaveBeenCalled();
+    expect(updateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ correctedById: 'manager-id' }) })
+    );
   });
 
   it('answers 403 to an employee, as a second line behind requireRole', async () => {

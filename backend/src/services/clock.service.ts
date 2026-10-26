@@ -203,7 +203,7 @@ export async function getClockSummary(
   return { userId, from, to, groupBy, ...summary };
 }
 
-// PUT /clocks/:id: a manager of the employee, or the admin, rewrites a session.
+// PUT /clocks/:id: a manager of the employee, the manager themselves, or the admin rewrites a session.
 // The route already refused employees (requireRole), so no lookup is made for them.
 export async function correctClock(
   caller: Caller,
@@ -218,10 +218,10 @@ export async function correctClock(
   const existing = await prisma.clock.findUnique({ where: { id: clockId }, select: { userId: true } });
   if (!existing) throw new AppError(404, 'NOT_FOUND', 'Session introuvable');
 
-  // Contract, section 6: a manager's clocks are corrected by the admin or by the manager of
-  // one of their teams, never by themselves (even as a member of their own team)
-  if (isSelf(caller, existing.userId)) throw forbidden();
-  if (!(await isManagerOfEmployee(caller, existing.userId))) throw forbidden();
+  // A manager may correct their own clocks (team decision), even outside any team they manage;
+  // correctedById then equals the owner, so self-corrections stay visible
+  const ownManagerSession = caller.role === 'manager' && isSelf(caller, existing.userId);
+  if (!ownManagerSession && !(await isManagerOfEmployee(caller, existing.userId))) throw forbidden();
 
   // Only a past session can be corrected: clockOut > clockIn, so clockIn is past too
   if (clockOut > now) {
