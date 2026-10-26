@@ -21,15 +21,6 @@ vi.mock('../../../src/lib/password', () => ({
   hashPassword: vi.fn().mockResolvedValue('dummy-hash'),
   verifyPassword: vi.fn(),
 }));
-vi.mock('../../../src/lib/prisma', () => {
-  const db = {
-    user: { findUnique: vi.fn() },
-    refreshToken: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
-    $transaction: vi.fn(),
-  };
-  db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db));
-  return { default: db };
-});
 
 
 const findUniqueMock = prisma.user.findUnique as unknown as Mock;

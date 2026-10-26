@@ -144,6 +144,11 @@ describe('POST /api/v1/auth/login: success', () => {
     const token = cookie(cookies, 'access_token')!.split(';')[0].split('=')[1];
     expect(verifyAccessToken(token)).toEqual({ id: '001', role: 'employee' });
   });
+
+  it('goes through authLimiter', async () => {
+    await login(input); 
+    expect(authLimiter).toHaveBeenCalled(); 
+  })
 });
 
 describe('POST /api/v1/auth/login: failures', () => {

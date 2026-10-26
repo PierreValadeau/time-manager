@@ -13,6 +13,7 @@ router.post('/login', authLimiter, validate({ body: loginSchema }), loginHandler
 
 router.post('/refresh', refreshHandler); 
 
+//No authenticate: logging out must work even with an expired access token
 router.post('/logout', logoutHandler);
 
 router.get('/me', authenticate, userLimiter, meHandler);
