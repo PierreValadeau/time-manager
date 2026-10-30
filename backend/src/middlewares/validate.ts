@@ -34,10 +34,10 @@ const validate =
       return;
     }
 
-    // On remplace les entrées par les versions validées (valeurs par défaut, coercions...)
+    // Replace the entries with the approved versions 
     if ('body' in parsed) req.body = parsed.body;
     if ('params' in parsed) req.params = parsed.params as typeof req.params;
-    // Express 5 : req.query est un getter, on ne peut pas l'assigner directement
+    // Express 5 : req.query is a getter
     if ('query' in parsed) {
       Object.defineProperty(req, 'query', { value: parsed.query, writable: true });
     }
