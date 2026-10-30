@@ -8,6 +8,7 @@ import clockRoutes from './routes/clock.routes';
 import userRoutes from './routes/user.routes';
 import userClockRoutes from './routes/userClock.routes';
 import authRoutes from './routes/auth.routes'; 
+import teamRoutes from './routes/team.routes'; 
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/clocks', clockRoutes);
 app.use('/api/v1/users/:id/clocks', userClockRoutes);
 app.use('/api/v1/auth', authRoutes); 
+app.use('/api/v1/teams', teamRoutes); 
 
 // Toujours en dernier : 404 puis gestionnaire d'erreurs
 app.use(notFound);
