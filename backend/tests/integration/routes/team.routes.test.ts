@@ -24,10 +24,12 @@ const dbTeam = {
   id: 'team-id',
   name: 'Team A',
   description: null,
-  managerId: 'manager-id',
   createdAt: new Date('2026-10-30T08:00:00Z'),
   updatedAt: new Date('2026-10-30T08:00:00Z'),
+  manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
+  members: [],
 };
+
 
 let server: Server;
 let baseUrl: string;
@@ -124,10 +126,15 @@ describe('POST /api/v1/teams: creation', () => {
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual({
-      ...dbTeam,
-      createdAt: '2026-10-30T08:00:00.000Z',
-      updatedAt: '2026-10-30T08:00:00.000Z',
+        id: 'team-id',
+        name: 'Team A',
+        description: null,
+        manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
+        members: [],
+        createdAt: '2026-10-30T08:00:00.000Z',
+        updatedAt: '2026-10-30T08:00:00.000Z',
     });
+
     expect(createTeamMock.mock.lastCall![0].data).toEqual({ name: 'Team A', managerId: 'manager-id' });
   });
 

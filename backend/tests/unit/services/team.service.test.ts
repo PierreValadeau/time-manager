@@ -22,13 +22,23 @@ const uniqueViolation = (column: string) =>
     code: 'P2002',
     clientVersion: 'test',
     meta: { target: [column] },
-  });
+});
+
+const dbTeam = {
+    id: 'team-id', 
+    name: 'Team A', 
+    description: null,
+    createdAt: new Date('2026-10-30T08:00:00Z'),
+    updatedAt: new Date('2026-10-30T08:00:00Z'),
+    manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
+    members: [],
+}; 
 
 beforeEach(() => {
     vi.clearAllMocks(); 
 
     findUserMock.mockResolvedValue({ role: 'manager', deleteAt: null }); 
-    createTeamMock.mockResolvedValue({ id: 'team-id', name: 'Team A' }); 
+    createTeamMock.mockResolvedValue(dbTeam); 
 }); 
 
 describe('createTeam: managerId', () => {
@@ -93,5 +103,15 @@ describe('createTeam: managerId', () => {
         ).rejects.toMatchObject({ status: 400, code: 'VALIDATION_ERROR' });
         
         expect(createTeamMock).not.toHaveBeenCalled();
-    })
+    }); 
+
+    it('returns members as plain users, as in the contract', async () => {
+        createTeamMock.mockResolvedValue({
+            ...dbTeam,
+            members: [{ user: { id: 'u1', firstName: 'Camille', lastName: 'Durand' } }],
+        });
+        const team = await createTeam(manager, { name: 'Team A' });
+    expect(team.members).toEqual([{ id: 'u1', firstName: 'Camille', lastName: 'Durand' }]);
+    });
+
 })
