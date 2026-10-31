@@ -4,6 +4,24 @@ import AppError from '../errors/AppError';
 import type { Caller } from './scope.service';
 import type { CreateTeamInput } from '../schemas/team.schema';
 
+//Contract section 5
+export const teamSelect = {
+    id: true, 
+    name: true, 
+    description: true, 
+    createdAt: true, 
+    updatedAt: true, 
+    manager: { select: { id: true, firstName: true, lastName: true } }, 
+    members: { select: { user: { select : { id: true, firstName: true, lastName: true }}}}, 
+} satisfies Prisma.TeamSelect; 
+
+type TeamRecord = Prisma.TeamGetPayload<{ select: typeof teamSelect }>; 
+
+export const toTeam = ({ members, ...team }: TeamRecord) => ({
+    ...team, 
+    members: members.map(member => member.user),
+}); 
+
 //verify if it's a manager -> contract: managerId defaults to the creator for a manager
 function resolveManagerId(actor: Caller, managerId: string | undefined) {
     if (actor.role === 'admin') {
@@ -37,9 +55,11 @@ export async function createTeam(actor: Caller, input: CreateTeamInput) {
     await assertActiveManager(managerId); 
 
     try {
-        return await prisma.team.create({
+        const team = await prisma.team.create({
             data: { ...input, managerId }, 
+            select: teamSelect,
         }); 
+        return toTeam(team); 
     } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
             throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déjà')
