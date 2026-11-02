@@ -6,14 +6,17 @@ import app from '../../../src/app';
 import prisma from '../../../src/lib/prisma';
 import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 
-// Integration test: the real app (middlewares, route, controller, service) over HTTP,
 // with only the database mocked
 vi.mock('../../../src/lib/prisma', () => ({
-  default: { user: { findUnique: vi.fn() }, team: { create: vi.fn() } },
+  default: { 
+    user: { findUnique: vi.fn() }, 
+    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn() } },
 }));
 
 const findUserMock = prisma.user.findUnique as unknown as Mock;
 const createTeamMock = prisma.team.create as unknown as Mock;
+const findTeamsMock = prisma.team.findMany as unknown as Mock;
+const countTeamsMock = prisma.team.count as unknown as Mock;
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
 // Zod expects a real UUID v4 for managerId
@@ -29,6 +32,18 @@ const dbTeam = {
   manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
   members: [],
 };
+
+// A row as findMany returns it with teamListSelect: _count instead of members
+const dbListTeam = {
+  id: 'team-id',
+  name: 'Team A',
+  description: null,
+  createdAt: new Date('2026-10-30T08:00:00Z'),
+  updatedAt: new Date('2026-10-30T08:00:00Z'),
+  manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
+  _count: { members: 3 },
+};
+
 
 
 let server: Server;
@@ -48,6 +63,8 @@ beforeEach(() => {
   vi.stubEnv('JWT_SECRET', SECRET);
   findUserMock.mockResolvedValue({ role: 'manager', deletedAt: null });
   createTeamMock.mockResolvedValue(dbTeam);
+  findTeamsMock.mockResolvedValue([dbListTeam]);
+  countTeamsMock.mockResolvedValue(1);
 });
 
 afterEach(() => {
@@ -67,6 +84,16 @@ const postTeam = async (role: 'employee' | 'manager' | 'admin' | null, payload: 
   });
   return { status: res.status, body: await res.json() };
 };
+
+const getTeams = async (role: 'employee' | 'manager' | 'admin' | null, query = '') => {
+  const headers: Record<string, string> = {};
+  if (role) {
+    headers.cookie = `${ACCESS_TOKEN_COOKIE}=${signAccessToken({ id: `${role}-id`, role })}`;
+  }
+  const res = await fetch(`${baseUrl}/api/v1/teams${query}`, { headers });
+  return { status: res.status, body: await res.json() };
+};
+
 
 describe('POST /api/v1/teams: access', () => {
   it('answers 401 without session', async () => {
@@ -163,3 +190,81 @@ describe('POST /api/v1/teams: creation', () => {
     expect(res.body.error.code).toBe('CONFLICT');
   });
 });
+
+// Arguments passed to prisma.team.findMany on the last call
+const findManyArgs = () => findTeamsMock.mock.lastCall![0];
+
+describe('GET /api/v1/teams: access', () => {
+  it('answers 401 without session', async () => {
+    const res = await getTeams(null);
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHENTICATED');
+    expect(findTeamsMock).not.toHaveBeenCalled();
+  });
+
+  it('lets an employee list teams, filtered on their memberships (200)', async () => {
+    const res = await getTeams('employee');
+    expect(res.status).toBe(200);
+    expect(findManyArgs().where).toEqual({ members: { some: { userId: 'employee-id' } } });
+  });
+
+  it('does not filter for a manager (200)', async () => {
+    const res = await getTeams('manager');
+    expect(res.status).toBe(200);
+    expect(findManyArgs().where).toEqual({});
+  });
+});
+
+describe('GET /api/v1/teams: response', () => {
+  it('answers with the paginated format of the contract', async () => {
+    const res = await getTeams('admin');
+    expect(res.body).toEqual({
+      data: [
+        {
+          id: 'team-id',
+          name: 'Team A',
+          description: null,
+          manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
+          memberCount: 3,
+          createdAt: '2026-10-30T08:00:00.000Z',
+          updatedAt: '2026-10-30T08:00:00.000Z',
+        },
+      ],
+      meta: { page: 1, limit: 20, total: 1 },
+    });
+  });
+});
+
+describe('GET /api/v1/teams: query', () => {
+  it('uses page 1 and limit 20 by default', async () => {
+    await getTeams('admin');
+    expect(findManyArgs()).toMatchObject({ skip: 0, take: 20 });
+  });
+
+  it('turns page and limit into numbers and skips the previous pages', async () => {
+    const res = await getTeams('admin', '?page=3&limit=5');
+    expect(findManyArgs()).toMatchObject({ skip: 10, take: 5 });
+    expect(res.body.meta).toMatchObject({ page: 3, limit: 5 });
+  });
+
+  it('searches the name, trimmed and case-insensitive', async () => {
+    await getTeams('admin', '?search=%20sup%20');
+    expect(findManyArgs().where).toEqual({ name: { contains: 'sup', mode: 'insensitive' } });
+  });
+
+  it('answers 400 above the maximum limit of 100', async () => {
+    const res = await getTeams('admin', '?limit=500');
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([expect.objectContaining({ field: 'limit' })]);
+    expect(findTeamsMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 for page 0', async () => {
+    expect((await getTeams('admin', '?page=0')).status).toBe(400);
+  });
+
+  it('answers 400 for an empty search', async () => {
+    expect((await getTeams('admin', '?search=')).status).toBe(400);
+  });
+});
+

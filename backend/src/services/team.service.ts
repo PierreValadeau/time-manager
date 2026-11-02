@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import type { Caller } from './scope.service';
-import type { CreateTeamInput } from '../schemas/team.schema';
+import type { CreateTeamInput, ListTeamsQuery } from '../schemas/team.schema';
 
 //Contract section 5
 export const teamSelect = {
@@ -15,12 +15,44 @@ export const teamSelect = {
     members: { select: { user: { select : { id: true, firstName: true, lastName: true }}}}, 
 } satisfies Prisma.TeamSelect; 
 
+//List item contrat section 5 -> memberCount instead of members
+export const teamListSelect = {
+    id: true, 
+    name: true, 
+    description: true, 
+    createdAt: true, 
+    updatedAt: true, 
+    manager: { select: { id: true, firstName: true, lastName: true }}, 
+    _count: { select: { members: true }}, 
+} satisfies Prisma.TeamSelect; 
+
 type TeamRecord = Prisma.TeamGetPayload<{ select: typeof teamSelect }>; 
+type TeamListRecord = Prisma.TeamGetPayload<{ select: typeof teamListSelect }>; 
 
 export const toTeam = ({ members, ...team }: TeamRecord) => ({
     ...team, 
     members: members.map(member => member.user),
 }); 
+
+export const toTeamListItem = ({ _count, ...team }: TeamListRecord) => ({
+    ...team, 
+    memberCount: _count.members,
+}); 
+
+//filter
+function teamListWhere(actor: Caller, search: string | undefined): Prisma.TeamWhereInput {
+    const where: Prisma.TeamWhereInput = {}; 
+
+    if (actor.role === 'employee') {
+        where.members = { some: { userId: actor.id } }; 
+    }
+
+    if (search) {
+        where.name = { contains: search, mode: 'insensitive' }; 
+    }
+
+    return where; 
+}
 
 //verify if it's a manager -> contract: managerId defaults to the creator for a manager
 function resolveManagerId(actor: Caller, managerId: string | undefined) {
@@ -66,4 +98,17 @@ export async function createTeam(actor: Caller, input: CreateTeamInput) {
         }
         throw err; 
     }
+}
+
+//paginated sorted by name
+export async function listTeams(actor: Caller, { page, limit, search }: ListTeamsQuery) {
+    const where = teamListWhere(actor, search); 
+    const skip = (page - 1) * limit; 
+
+    const [rows, total] = await Promise.all([
+        prisma.team.findMany({ where, select: teamListSelect, orderBy: { name: 'asc' }, skip, take: limit }), 
+        prisma.team.count({ where }), 
+    ]); 
+
+    return { data: rows.map(toTeamListItem), meta: { page, limit, total } }; 
 }

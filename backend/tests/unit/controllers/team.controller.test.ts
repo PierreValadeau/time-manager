@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Request, Response } from 'express';
 import AppError from '../../../src/errors/AppError';
-import { createTeam } from '../../../src/services/team.service';
-import { createTeamHandler } from '../../../src/controllers/team.controller';
+import { createTeam, listTeams } from '../../../src/services/team.service';
+import { createTeamHandler, listTeamsHandler } from '../../../src/controllers/team.controller';
 
 // The service is tested on its own: here we only check the HTTP layer
-vi.mock('../../../src/services/team.service', () => ({ createTeam: vi.fn() }));
+vi.mock('../../../src/services/team.service', () => ({ createTeam: vi.fn(), listTeams: vi.fn() }));
 
 const createTeamMock = createTeam as unknown as Mock;
+const listTeamsMock = listTeams as unknown as Mock; 
 
 const manager = { id: 'manager-id', role: 'manager' as const };
 const body = { name: 'Team A' };
@@ -21,6 +22,9 @@ const makeRes = () => {
 
 const call = (req: Partial<Request>, res = makeRes()) =>
   Promise.resolve(createTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
+
+const callList = (req: Partial<Request>, res = makeRes()) => 
+  Promise.resolve(listTeamsHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -49,3 +53,37 @@ describe('createTeamHandler', () => {
     await expect(call({ user: manager, body })).rejects.toMatchObject({ status: 409 });
   });
 });
+
+describe('listTeamsHandler', () => {
+  const employee = { id: 'employee-id', role: 'employee' as const };
+  // What validate() leaves in req.query: numbers and defaults already applied
+  const query = { page: 2, limit: 5, search: 'sup' };
+  const page = { data: [{ id: 'team-id', name: 'Team A', memberCount: 3 }], meta: { page: 2, limit: 5, total: 6 } };
+
+  beforeEach(() => {
+    listTeamsMock.mockResolvedValue(page);
+  });
+
+  it('responds with the page returned by the service (200 by default)', async () => {
+    const res = await callList({ user: employee, query });
+    expect(res.json).toHaveBeenCalledWith(page);
+    // No explicit status: Express answers 200
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('passes the authenticated caller and the validated query to the service', async () => {
+    await callList({ user: employee, query });
+    expect(listTeamsMock).toHaveBeenCalledWith(employee, query);
+  });
+
+  it('rejects with 401 when no user is authenticated', async () => {
+    await expect(callList({ query })).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+    expect(listTeamsMock).not.toHaveBeenCalled();
+  });
+
+  it('lets service errors reach the error handler', async () => {
+    listTeamsMock.mockRejectedValue(new Error('database down'));
+    await expect(callList({ user: employee, query })).rejects.toThrow('database down');
+  });
+});
+
