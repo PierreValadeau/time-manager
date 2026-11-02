@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { isTeamManager, Caller } from './scope.service';
-import type { CreateTeamInput, ListTeamsQuery, UpdateTeamSchema } from '../schemas/team.schema';
+import type { CreateTeamInput, ListTeamsQuery, UpdateTeamInput } from '../schemas/team.schema';
 
 //Contract section 5
 export const teamSelect = {
@@ -97,7 +97,7 @@ async function assertCanManageTeam(actor: Caller, teamId: string): Promise<void>
     }
 
     if (!(await isTeamManager(actor, teamId))) {
-        throw new AppError(403, 'FORBIDDEN', "Seul le manader de l'équipe peut modifier l'équipe"); 
+        throw new AppError(403, 'FORBIDDEN', "Seul le manager de l'équipe peut modifier l'équipe"); 
     }
 }
 
@@ -152,7 +152,7 @@ export async function getTeam(actor: Caller, teamId: string) {
 } 
 
 // PUT /teams/:id
-export async function updateTeam(actor: Caller, teamId: string, input: UpdateTeamSchema) {
+export async function updateTeam(actor: Caller, teamId: string, input: UpdateTeamInput) {
     await assertCanManageTeam(actor, teamId); 
     await assertActiveManager(input.managerId);
     
@@ -165,7 +165,7 @@ export async function updateTeam(actor: Caller, teamId: string, input: UpdateTea
         return toTeam(team); 
     } catch (err) {
         if (isTeamNameTaken(err)) {
-            throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déja'); 
+            throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déjà'); 
         } 
         throw err; 
     }

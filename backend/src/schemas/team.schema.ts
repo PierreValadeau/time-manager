@@ -21,4 +21,4 @@ export const updateTeamSchema = z.object({
 
 export type CreateTeamInput = z.infer<typeof createTeamSchema>; 
 export type ListTeamsQuery = z.infer<typeof listTeamsQuerySchema>;
-export type UpdateTeamSchema = z.infer<typeof updateTeamSchema>;  
+export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;  
