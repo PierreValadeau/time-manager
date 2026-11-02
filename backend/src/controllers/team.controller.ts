@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { ListTeamsQuery } from '../schemas/team.schema';
 import AppError from '../errors/AppError';
-import { createTeam, listTeams, getTeam } from '../services/team.service';
+import { createTeam, listTeams, getTeam, updateTeam, deleteTeam } from '../services/team.service';
 
 // POST /teams
 export const createTeamHandler: RequestHandler = async (req, res) => {
@@ -32,3 +32,20 @@ export const getTeamHandler: RequestHandler<{ id: string }> = async (req, res) =
 
   res.json(await getTeam(req.user, req.params.id)); 
 }; 
+
+//PUT /teams/:id
+export const updateTeamHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
+  }
+  res.json(await updateTeam(req.user, req.params.id, req.body)); 
+}
+
+//DELETE /teams/:id
+export const deleteTeamHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
+  }
+  await deleteTeam(req.user, req.params.id); 
+  res.sendStatus(204); 
+}

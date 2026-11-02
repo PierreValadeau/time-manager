@@ -1,20 +1,24 @@
 import { Prisma } from '@prisma/client'; 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'; 
 import prisma from '../../../src/lib/prisma';
-import { createTeam, listTeams, getTeam } from '../../../src/services/team.service'; 
-import type { Caller } from '../../../src/services/scope.service'; 
+import { createTeam, listTeams, getTeam, updateTeam, deleteTeam } from '../../../src/services/team.service'; 
+import { isTeamManager, type Caller } from '../../../src/services/scope.service'; 
 
 vi.mock('../../../src/lib/prisma', () => ({
     default: { 
         user: { findUnique: vi.fn() }, 
-        team: { create: vi.fn(), findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn() } 
+        team: { create: vi.fn(), findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() } 
     },
 }));
+vi.mock('../../../src/services/scope.service', () => ({ isTeamManager: vi.fn() })); 
 
 const findUserMock = prisma.user.findUnique as unknown as Mock; 
 const createTeamMock = prisma.team.create as unknown as Mock; 
 const findManyMock = prisma.team.findMany as unknown as Mock;
 const findTeamMock = prisma.team.findUnique as unknown as Mock; 
+const isTeamManagerMock = isTeamManager as unknown as Mock; 
+const updateTeamMock = prisma.team.update as unknown as Mock; 
+const deleteTeamMock = prisma.team.delete as unknown as Mock; 
 const countMock = prisma.team.count as unknown as Mock;
 const employee: Caller = { id: 'employee-id', role: 'employee' };
 
@@ -218,3 +222,79 @@ describe('getTeam', () => {
   });
 });
 
+describe('updateTeam', () => {
+  const input = { name: 'Team B', description: null, managerId: 'new-manager-id' };
+
+  beforeEach(() => {
+    findTeamMock.mockResolvedValue({ id: 'team-id' });
+    isTeamManagerMock.mockResolvedValue(true);
+    updateTeamMock.mockResolvedValue({ ...dbTeam, name: 'Team B' });
+  });
+
+  it('answers 404 when the team does not exist, before checking rights', async () => {
+    findTeamMock.mockResolvedValue(null);
+    await expect(updateTeam(manager, 'missing-id', input)).rejects.toMatchObject({ status: 404 });
+    expect(isTeamManagerMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 to a manager of another team, without writing', async () => {
+    isTeamManagerMock.mockResolvedValue(false);
+    await expect(updateTeam(manager, 'team-id', input)).rejects.toMatchObject({ status: 403 });
+    expect(updateTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('checks rights before the new manager (no probing of manager ids)', async () => {
+    isTeamManagerMock.mockResolvedValue(false);
+    await expect(updateTeam(manager, 'team-id', input)).rejects.toMatchObject({ status: 403 });
+    expect(findUserMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when the new manager is not an active manager', async () => {
+    findUserMock.mockResolvedValue({ role: 'employee', deletedAt: null });
+    await expect(updateTeam(admin, 'team-id', input)).rejects.toMatchObject({ status: 400 });
+    expect(updateTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('lets the admin reassign a team to another manager', async () => {
+    await updateTeam(admin, 'team-id', input);
+    expect(updateTeamMock.mock.lastCall![0]).toMatchObject({
+      where: { id: 'team-id' },
+      data: { managerId: 'new-manager-id' },
+    });
+  });
+
+  it('answers 409 when the new name is taken', async () => {
+    updateTeamMock.mockRejectedValue(uniqueViolation('name'));
+    await expect(updateTeam(manager, 'team-id', input)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('returns the updated team in the contract format', async () => {
+    const team = await updateTeam(manager, 'team-id', input);
+    expect(team).toMatchObject({ name: 'Team B', members: [] });
+  });
+});
+
+describe('deleteTeam', () => {
+  beforeEach(() => {
+    findTeamMock.mockResolvedValue({ id: 'team-id' });
+    isTeamManagerMock.mockResolvedValue(true);
+    deleteTeamMock.mockResolvedValue({});
+  });
+
+  it('deletes the team when the caller manages it', async () => {
+    await deleteTeam(manager, 'team-id');
+    expect(deleteTeamMock).toHaveBeenCalledWith({ where: { id: 'team-id' } });
+  });
+
+  it('answers 404 when the team does not exist', async () => {
+    findTeamMock.mockResolvedValue(null);
+    await expect(deleteTeam(manager, 'missing-id')).rejects.toMatchObject({ status: 404 });
+    expect(deleteTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 to a manager of another team, without deleting', async () => {
+    isTeamManagerMock.mockResolvedValue(false);
+    await expect(deleteTeam(manager, 'team-id')).rejects.toMatchObject({ status: 403 });
+    expect(deleteTeamMock).not.toHaveBeenCalled();
+  });
+});

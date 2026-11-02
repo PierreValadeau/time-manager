@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
-import type { Caller } from './scope.service';
-import type { CreateTeamInput, ListTeamsQuery } from '../schemas/team.schema';
+import { isTeamManager, Caller } from './scope.service';
+import type { CreateTeamInput, ListTeamsQuery, UpdateTeamSchema } from '../schemas/team.schema';
 
 //Contract section 5
 export const teamSelect = {
@@ -38,6 +38,14 @@ export const toTeamListItem = ({ _count, ...team }: TeamListRecord) => ({
     ...team, 
     memberCount: _count.members,
 }); 
+
+//P2002 on the team name
+const isTeamNameTaken = (err: unknown) => {
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false; 
+    const target = err.meta?.target; 
+    const fields = Array.isArray(target) ? target : [target]; 
+    return fields.some(field => String(field).includes('name')); 
+}; 
 
 //filter
 function teamListWhere(actor: Caller, search: string | undefined): Prisma.TeamWhereInput {
@@ -82,6 +90,17 @@ async function assertActiveManager(managerId: string): Promise<void> {
     }
 } 
 
+async function assertCanManageTeam(actor: Caller, teamId: string): Promise<void> {
+    const team = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true }}); 
+    if (!team) {
+        throw new AppError(404, 'NOT_FOUND', 'Équipe introuvable'); 
+    }
+
+    if (!(await isTeamManager(actor, teamId))) {
+        throw new AppError(403, 'FORBIDDEN', "Seul le manader de l'équipe peut modifier l'équipe"); 
+    }
+}
+
 export async function createTeam(actor: Caller, input: CreateTeamInput) {
     const managerId = resolveManagerId(actor, input.managerId); 
     await assertActiveManager(managerId); 
@@ -93,7 +112,7 @@ export async function createTeam(actor: Caller, input: CreateTeamInput) {
         }); 
         return toTeam(team); 
     } catch (err) {
-        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        if (isTeamNameTaken(err)) {
             throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déjà')
         }
         throw err; 
@@ -131,3 +150,29 @@ export async function getTeam(actor: Caller, teamId: string) {
 
     return toTeam(team); 
 } 
+
+// PUT /teams/:id
+export async function updateTeam(actor: Caller, teamId: string, input: UpdateTeamSchema) {
+    await assertCanManageTeam(actor, teamId); 
+    await assertActiveManager(input.managerId);
+    
+    try {
+        const team = await prisma.team.update({
+            where: { id: teamId }, 
+            data: input, 
+            select: teamSelect,
+        }); 
+        return toTeam(team); 
+    } catch (err) {
+        if (isTeamNameTaken(err)) {
+            throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déja'); 
+        } 
+        throw err; 
+    }
+}
+
+//DELETE /teams/:id
+export async function deleteTeam(actor: Caller, teamId: string): Promise<void> {
+    await assertCanManageTeam(actor, teamId); 
+    await prisma.team.delete({ where: { id: teamId }}); 
+}
