@@ -1,15 +1,21 @@
 import { Prisma } from '@prisma/client'; 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'; 
 import prisma from '../../../src/lib/prisma';
-import { createTeam } from '../../../src/services/team.service'; 
+import { createTeam, listTeams } from '../../../src/services/team.service'; 
 import type { Caller } from '../../../src/services/scope.service'; 
 
 vi.mock('../../../src/lib/prisma', () => ({
-    default: { user: { findUnique: vi.fn() }, team: { create: vi.fn() } },
+    default: { 
+        user: { findUnique: vi.fn() }, 
+        team: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() } 
+    },
 }));
 
 const findUserMock = prisma.user.findUnique as unknown as Mock; 
 const createTeamMock = prisma.team.create as unknown as Mock; 
+const findManyMock = prisma.team.findMany as unknown as Mock;
+const countMock = prisma.team.count as unknown as Mock;
+const employee: Caller = { id: 'employee-id', role: 'employee' };
 
 const admin: Caller = { id: 'admin-id', role: 'admin' }; 
 const manager: Caller = { id: 'manager-id', role: 'manager' }; 
@@ -114,4 +120,58 @@ describe('createTeam: managerId', () => {
     expect(team.members).toEqual([{ id: 'u1', firstName: 'Camille', lastName: 'Durand' }]);
     });
 
-})
+}); 
+
+describe('listTeams', () => {
+  const dbListTeam = {
+    id: 'team-id', name: 'Team A', description: null,
+    createdAt: new Date('2026-10-30T08:00:00Z'), updatedAt: new Date('2026-10-30T08:00:00Z'),
+    manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
+    _count: { members: 3 },
+  };
+
+  // where passed to findMany on the last call
+  const listWhere = () => findManyMock.mock.lastCall![0].where;
+
+  beforeEach(() => {
+    findManyMock.mockResolvedValue([dbListTeam]);
+    countMock.mockResolvedValue(1);
+  });
+
+  it('only returns the teams of an employee', async () => {
+    await listTeams(employee, { page: 1, limit: 20 });
+    expect(listWhere()).toEqual({ members: { some: { userId: 'employee-id' } } });
+  });
+
+  it('does not filter for a manager or the admin', async () => {
+    await listTeams(manager, { page: 1, limit: 20 });
+    expect(listWhere()).toEqual({});
+    await listTeams(admin, { page: 1, limit: 20 });
+    expect(listWhere()).toEqual({});
+  });
+
+  it('searches the name, case-insensitive, combined with the employee filter', async () => {
+    await listTeams(employee, { page: 1, limit: 20, search: 'sup' });
+    expect(listWhere()).toEqual({
+      members: { some: { userId: 'employee-id' } },
+      name: { contains: 'sup', mode: 'insensitive' },
+    });
+  });
+
+  it('counts with the same filter as the page', async () => {
+    await listTeams(employee, { page: 1, limit: 20, search: 'sup' });
+    expect(countMock.mock.lastCall![0].where).toEqual(listWhere());
+  });
+
+  it('skips the previous pages', async () => {
+    await listTeams(admin, { page: 3, limit: 10 });
+    expect(findManyMock.mock.lastCall![0]).toMatchObject({ skip: 20, take: 10 });
+  });
+
+  it('returns data with memberCount and the pagination meta', async () => {
+    const result = await listTeams(admin, { page: 1, limit: 20 });
+    expect(result.meta).toEqual({ page: 1, limit: 20, total: 1 });
+    expect(result.data[0]).toMatchObject({ id: 'team-id', memberCount: 3 });
+    expect(result.data[0]).not.toHaveProperty('_count');
+  });
+});
