@@ -112,3 +112,22 @@ export async function listTeams(actor: Caller, { page, limit, search }: ListTeam
 
     return { data: rows.map(toTeamListItem), meta: { page, limit, total } }; 
 }
+
+// GET /teams/:id -> members, any manager and the admin
+export async function getTeam(actor: Caller, teamId: string) {
+    const team = await prisma.team.findUnique({
+        where: { id: teamId }, 
+        select: teamSelect,
+    }); 
+
+    if (!team) {
+        throw new AppError(404, 'NOT_FOUND', 'Équipe introuvable'); 
+    }
+
+    const isMember = team.members.some(member => member.user.id === actor.id); 
+    if (actor.role === 'employee' && !isMember) {
+        throw new AppError(403, 'FORBIDDEN', 'Vous ne faites pas partie de cette équipe'); 
+    }
+
+    return toTeam(team); 
+} 

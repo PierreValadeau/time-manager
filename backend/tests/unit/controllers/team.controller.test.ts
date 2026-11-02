@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Request, Response } from 'express';
 import AppError from '../../../src/errors/AppError';
-import { createTeam, listTeams } from '../../../src/services/team.service';
-import { createTeamHandler, listTeamsHandler } from '../../../src/controllers/team.controller';
+import { createTeam, getTeam, listTeams } from '../../../src/services/team.service';
+import { createTeamHandler, listTeamsHandler, getTeamHandler } from '../../../src/controllers/team.controller';
 
 // The service is tested on its own: here we only check the HTTP layer
-vi.mock('../../../src/services/team.service', () => ({ createTeam: vi.fn(), listTeams: vi.fn() }));
+vi.mock('../../../src/services/team.service', () => ({ createTeam: vi.fn(), listTeams: vi.fn(), getTeam: vi.fn() }));
 
 const createTeamMock = createTeam as unknown as Mock;
 const listTeamsMock = listTeams as unknown as Mock; 
+const getTeamMock = getTeam as unknown as Mock; 
 
 const manager = { id: 'manager-id', role: 'manager' as const };
 const body = { name: 'Team A' };
@@ -25,6 +26,9 @@ const call = (req: Partial<Request>, res = makeRes()) =>
 
 const callList = (req: Partial<Request>, res = makeRes()) => 
   Promise.resolve(listTeamsHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
+
+const callGet = (req: Partial<Request>, res = makeRes()) => 
+  Promise.resolve(getTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -86,4 +90,28 @@ describe('listTeamsHandler', () => {
     await expect(callList({ user: employee, query })).rejects.toThrow('database down');
   });
 });
+
+describe('getTeamHandler', () => {
+  const team = { id: 'team-id', name: 'Team A', members: [] };
+
+  beforeEach(() => {
+    getTeamMock.mockResolvedValue(team);
+  });
+
+  it('responds with the team returned by the service', async () => {
+    const res = await callGet({ user: manager, params: { id: 'team-id' } });
+    expect(res.json).toHaveBeenCalledWith(team);
+  });
+
+  it('passes the caller and the id from the URL to the service', async () => {
+    await callGet({ user: manager, params: { id: 'team-id' } });
+    expect(getTeamMock).toHaveBeenCalledWith(manager, 'team-id');
+  });
+
+  it('rejects with 401 when no user is authenticated', async () => {
+    await expect(callGet({ params: { id: 'team-id' } })).rejects.toMatchObject({ status: 401 });
+    expect(getTeamMock).not.toHaveBeenCalled();
+  });
+});
+
 
