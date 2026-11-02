@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { ListTeamsQuery } from '../schemas/team.schema';
 import AppError from '../errors/AppError';
-import { createTeam, listTeams } from '../services/team.service';
+import { createTeam, listTeams, getTeam } from '../services/team.service';
 
 // POST /teams
 export const createTeamHandler: RequestHandler = async (req, res) => {
@@ -22,4 +22,13 @@ export const listTeamsHandler: RequestHandler = async (req, res) => {
   //parsed by validate() with ListTeamsQuerySchema -> clock.controller.ts:62 
   const query = req.query as unknown as ListTeamsQuery; 
   res.json(await listTeams(req.user, query)); 
+}; 
+
+//GET /teams/:id
+export const getTeamHandler: RequestHandler<{ id: string }> = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
+  }
+
+  res.json(await getTeam(req.user, req.params.id)); 
 }; 

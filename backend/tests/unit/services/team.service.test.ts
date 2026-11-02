@@ -1,19 +1,20 @@
 import { Prisma } from '@prisma/client'; 
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest'; 
 import prisma from '../../../src/lib/prisma';
-import { createTeam, listTeams } from '../../../src/services/team.service'; 
+import { createTeam, listTeams, getTeam } from '../../../src/services/team.service'; 
 import type { Caller } from '../../../src/services/scope.service'; 
 
 vi.mock('../../../src/lib/prisma', () => ({
     default: { 
         user: { findUnique: vi.fn() }, 
-        team: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() } 
+        team: { create: vi.fn(), findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn() } 
     },
 }));
 
 const findUserMock = prisma.user.findUnique as unknown as Mock; 
 const createTeamMock = prisma.team.create as unknown as Mock; 
 const findManyMock = prisma.team.findMany as unknown as Mock;
+const findTeamMock = prisma.team.findUnique as unknown as Mock; 
 const countMock = prisma.team.count as unknown as Mock;
 const employee: Caller = { id: 'employee-id', role: 'employee' };
 
@@ -175,3 +176,45 @@ describe('listTeams', () => {
     expect(result.data[0]).not.toHaveProperty('_count');
   });
 });
+
+describe('getTeam', () => {
+  // Team with one member, as Prisma returns it with teamSelect
+  const dbTeamWithMember = {
+    ...dbTeam,
+    members: [{ user: { id: 'employee-id', firstName: 'Camille', lastName: 'Durand' } }],
+  };
+
+  beforeEach(() => {
+    findTeamMock.mockResolvedValue(dbTeamWithMember);
+  });
+
+  it('looks the team up by its id with the full select', async () => {
+    await getTeam(admin, 'team-id');
+    expect(findTeamMock.mock.lastCall![0].where).toEqual({ id: 'team-id' });
+  });
+
+  it('answers 404 when the team does not exist, whatever the role', async () => {
+    findTeamMock.mockResolvedValue(null);
+    await expect(getTeam(employee, 'missing-id')).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' });
+  });
+
+  it('returns the team to a member employee, in the contract format', async () => {
+    const team = await getTeam(employee, 'team-id');
+    expect(team.members).toEqual([{ id: 'employee-id', firstName: 'Camille', lastName: 'Durand' }]);
+  });
+
+  it('answers 403 to an employee who is not a member', async () => {
+    const outsider: Caller = { id: 'outsider-id', role: 'employee' };
+    await expect(getTeam(outsider, 'team-id')).rejects.toMatchObject({ status: 403, code: 'FORBIDDEN' });
+  });
+
+  it('lets any manager read the team, even one who does not manage it', async () => {
+    const otherManager: Caller = { id: 'other-manager-id', role: 'manager' };
+    await expect(getTeam(otherManager, 'team-id')).resolves.toMatchObject({ id: 'team-id' });
+  });
+
+  it('lets the admin read any team', async () => {
+    await expect(getTeam(admin, 'team-id')).resolves.toMatchObject({ id: 'team-id' });
+  });
+});
+

@@ -10,12 +10,13 @@ import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 vi.mock('../../../src/lib/prisma', () => ({
   default: { 
     user: { findUnique: vi.fn() }, 
-    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn() } },
+    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn() } },
 }));
 
 const findUserMock = prisma.user.findUnique as unknown as Mock;
 const createTeamMock = prisma.team.create as unknown as Mock;
 const findTeamsMock = prisma.team.findMany as unknown as Mock;
+const findTeamMock = prisma.team.findUnique as unknown as Mock;
 const countTeamsMock = prisma.team.count as unknown as Mock;
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
@@ -65,6 +66,7 @@ beforeEach(() => {
   createTeamMock.mockResolvedValue(dbTeam);
   findTeamsMock.mockResolvedValue([dbListTeam]);
   countTeamsMock.mockResolvedValue(1);
+  findTeamMock.mockResolvedValue(dbTeam); 
 });
 
 afterEach(() => {
@@ -267,4 +269,71 @@ describe('GET /api/v1/teams: query', () => {
     expect((await getTeams('admin', '?search=')).status).toBe(400);
   });
 });
+
+const TEAM_ID = 'c0ffee00-0000-4000-8000-000000000001'; // a real UUID v4, as Zod requires
+
+// GET /api/v1/teams/:id as the given role (or without session)
+const getTeamById = async (role: 'employee' | 'manager' | 'admin' | null, id = TEAM_ID) => {
+  const headers: Record<string, string> = {};
+  if (role) {
+    headers.cookie = `${ACCESS_TOKEN_COOKIE}=${signAccessToken({ id: `${role}-id`, role })}`;
+  }
+  const res = await fetch(`${baseUrl}/api/v1/teams/${id}`, { headers });
+  return { status: res.status, body: await res.json() };
+};
+
+describe('GET /api/v1/teams/:id', () => {
+  it('answers 401 without session', async () => {
+    expect((await getTeamById(null)).status).toBe(401);
+    expect(findTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when the id is not a UUID, before touching the database', async () => {
+    const res = await getTeamById('admin', 'not-a-uuid');
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([expect.objectContaining({ field: 'id' })]);
+    expect(findTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 when the team does not exist', async () => {
+    findTeamMock.mockResolvedValue(null);
+    const res = await getTeamById('admin');
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('answers 403 to an employee who is not a member', async () => {
+    const res = await getTeamById('employee');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+  });
+
+  it('answers 200 to a member employee', async () => {
+    findTeamMock.mockResolvedValue({
+      ...dbTeam,
+      members: [{ user: { id: 'employee-id', firstName: 'Camille', lastName: 'Durand' } }],
+    });
+    expect((await getTeamById('employee')).status).toBe(200);
+  });
+
+  it('answers 200 to any manager, with the full team object of the contract', async () => {
+    const res = await getTeamById('manager');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      id: 'team-id',
+      name: 'Team A',
+      description: null,
+      manager: { id: 'manager-id', firstName: 'Nadia', lastName: 'Benali' },
+      members: [],
+      createdAt: '2026-10-30T08:00:00.000Z',
+      updatedAt: '2026-10-30T08:00:00.000Z',
+    });
+  });
+
+  it('looks the team up with the id from the URL', async () => {
+    await getTeamById('admin');
+    expect(findTeamMock.mock.lastCall![0].where).toEqual({ id: TEAM_ID });
+  });
+});
+
 
