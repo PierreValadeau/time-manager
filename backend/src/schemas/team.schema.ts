@@ -13,5 +13,12 @@ export const listTeamsQuerySchema = paginationSchema
         search: z.string().trim().min(1).max(100).optional(),
     }); 
 
+export const updateTeamSchema = z.object({
+    name: z.string().trim().min(1).max(100), 
+    description: z.string().trim().max(500).nullable(), 
+    managerId: z.uuidv4(),
+}); 
+
 export type CreateTeamInput = z.infer<typeof createTeamSchema>; 
-export type ListTeamsQuery = z.infer<typeof listTeamsQuerySchema>; 
+export type ListTeamsQuery = z.infer<typeof listTeamsQuerySchema>;
+export type UpdateTeamSchema = z.infer<typeof updateTeamSchema>;  

@@ -10,7 +10,7 @@ import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 vi.mock('../../../src/lib/prisma', () => ({
   default: { 
     user: { findUnique: vi.fn() }, 
-    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn() } },
+    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() } },
 }));
 
 const findUserMock = prisma.user.findUnique as unknown as Mock;
@@ -18,6 +18,8 @@ const createTeamMock = prisma.team.create as unknown as Mock;
 const findTeamsMock = prisma.team.findMany as unknown as Mock;
 const findTeamMock = prisma.team.findUnique as unknown as Mock;
 const countTeamsMock = prisma.team.count as unknown as Mock;
+const updateTeamMock = prisma.team.update as unknown as Mock; 
+const deleteTeamMock = prisma.team.delete as unknown as Mock; 
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
 // Zod expects a real UUID v4 for managerId
@@ -67,6 +69,8 @@ beforeEach(() => {
   findTeamsMock.mockResolvedValue([dbListTeam]);
   countTeamsMock.mockResolvedValue(1);
   findTeamMock.mockResolvedValue(dbTeam); 
+  updateTeamMock.mockResolvedValue(dbTeam); 
+  deleteTeamMock.mockResolvedValue(dbTeam); 
 });
 
 afterEach(() => {
@@ -96,6 +100,24 @@ const getTeams = async (role: 'employee' | 'manager' | 'admin' | null, query = '
   return { status: res.status, body: await res.json() };
 };
 
+const putTeam = async (role: 'employee' | 'manager' | 'admin' | null, payload: unknown, id = TEAM_ID) => {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (role) {
+    headers.cookie = `${ACCESS_TOKEN_COOKIE}=${signAccessToken({ id: `${role}-id`, role })}`;
+  }
+  const res = await fetch(`${baseUrl}/api/v1/teams/${id}`, { method: 'PUT', headers, body: JSON.stringify(payload) });
+  return { status: res.status, body: await res.json() };
+};
+
+const deleteTeamById = async (role: 'employee' | 'manager' | 'admin' | null, id = TEAM_ID) => {
+  const headers: Record<string, string> = {};
+  if (role) {
+    headers.cookie = `${ACCESS_TOKEN_COOKIE}=${signAccessToken({ id: `${role}-id`, role })}`;
+  }
+  const res = await fetch(`${baseUrl}/api/v1/teams/${id}`, { method: 'DELETE', headers });
+  // A 204 has no body: reading it as JSON would throw
+  return { status: res.status, text: await res.text() };
+};
 
 describe('POST /api/v1/teams: access', () => {
   it('answers 401 without session', async () => {
@@ -336,4 +358,76 @@ describe('GET /api/v1/teams/:id', () => {
   });
 });
 
+describe('PUT /api/v1/teams/:id', () => {
+  const update = { name: 'Team B', description: null, managerId: OTHER_MANAGER_ID };
+
+  beforeEach(() => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'manager-id' });
+    updateTeamMock.mockResolvedValue({ ...dbTeam, name: 'Team B' });
+  });
+
+  it('answers 403 to an employee, even with an invalid body', async () => {
+    expect((await putTeam('employee', {})).status).toBe(403);
+  });
+
+  it('answers 400 when a field is missing (PUT sends every field)', async () => {
+    const res = await putTeam('manager', { name: 'Team B' });
+    expect(res.status).toBe(400);
+    expect(updateTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 when the team does not exist', async () => {
+    findTeamMock.mockResolvedValue(null);
+    expect((await putTeam('manager', update)).status).toBe(404);
+  });
+
+  it('answers 403 to a manager who does not manage the team', async () => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
+    expect((await putTeam('manager', update)).status).toBe(403);
+    expect(updateTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('lets the team manager update it (200)', async () => {
+    const res = await putTeam('manager', update);
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Team B');
+  });
+
+  it('lets the admin reassign any team to another manager', async () => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
+    const res = await putTeam('admin', update);
+    expect(res.status).toBe(200);
+    expect(updateTeamMock.mock.lastCall![0].data.managerId).toBe(OTHER_MANAGER_ID);
+  });
+});
+
+describe('DELETE /api/v1/teams/:id', () => {
+  beforeEach(() => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'manager-id' });
+    deleteTeamMock.mockResolvedValue({});
+  });
+
+  it('answers 403 to an employee', async () => {
+    expect((await deleteTeamById('employee')).status).toBe(403);
+    expect(deleteTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 403 to a manager who does not manage the team', async () => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
+    expect((await deleteTeamById('manager')).status).toBe(403);
+    expect(deleteTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 204 with no body to the team manager', async () => {
+    const res = await deleteTeamById('manager');
+    expect(res.status).toBe(204);
+    expect(res.text).toBe('');
+    expect(deleteTeamMock).toHaveBeenCalledWith({ where: { id: TEAM_ID } });
+  });
+
+  it('lets the admin delete any team', async () => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
+    expect((await deleteTeamById('admin')).status).toBe(204);
+  });
+});
 
