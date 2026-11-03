@@ -1,17 +1,27 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import type { Request, Response } from 'express';
 import AppError from '../../../src/errors/AppError';
-import { createTeam, getTeam, listTeams, updateTeam, deleteTeam } from '../../../src/services/team.service';
-import { createTeamHandler, listTeamsHandler, getTeamHandler, updateTeamHandler, deleteTeamHandler } from '../../../src/controllers/team.controller';
+import { createTeam, getTeam, listTeams, updateTeam, deleteTeam, addTeamMember, removeTeamMember } from '../../../src/services/team.service';
+import { createTeamHandler, listTeamsHandler, getTeamHandler, updateTeamHandler, deleteTeamHandler, addTeamMemberHandler, removeTeamMemberHandler } from '../../../src/controllers/team.controller';
 
 // The service is tested on its own: here we only check the HTTP layer
-vi.mock('../../../src/services/team.service', () => ({ createTeam: vi.fn(), listTeams: vi.fn(), getTeam: vi.fn(), updateTeam: vi.fn(), deleteTeam: vi.fn() }));
+vi.mock('../../../src/services/team.service', () => ({ 
+  createTeam: vi.fn(), 
+  listTeams: vi.fn(), 
+  getTeam: vi.fn(), 
+  updateTeam: vi.fn(), 
+  deleteTeam: vi.fn(), 
+  addTeamMember: vi.fn(), 
+  removeTeamMember: vi.fn()
+}));
 
 const createTeamMock = createTeam as unknown as Mock;
 const listTeamsMock = listTeams as unknown as Mock; 
 const getTeamMock = getTeam as unknown as Mock; 
 const updateTeamMock = updateTeam as unknown as Mock;
 const deleteTeamMock = deleteTeam as unknown as Mock;
+const addTeamMemberMock = addTeamMember as unknown as Mock; 
+const removeTeamMemberMock = removeTeamMember as unknown as Mock; 
 
 const manager = { id: 'manager-id', role: 'manager' as const };
 const body = { name: 'Team A' };
@@ -37,6 +47,12 @@ const callUpdate = (req: Partial<Request>, res = makeRes()) =>
 
 const callDelete = (req: Partial<Request>, res = makeRes()) =>
   Promise.resolve(deleteTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
+
+const callAddMember = (req: Partial<Request>, res = makeRes()) => 
+  Promise.resolve(addTeamMemberHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
+
+const callRemoveMember = (req: Partial<Request>, res = makeRes()) => 
+  Promise.resolve(removeTeamMemberHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
 
 
 beforeEach(() => {
@@ -189,6 +205,50 @@ describe('deleteTeamHandler', () => {
     expect(res.sendStatus).not.toHaveBeenCalled();
   });
 });
+
+describe('addTeamMemberHandler', () => {
+  beforeEach(() => {
+    addTeamMemberMock.mockResolvedValue(undefined); 
+  }); 
+
+  it('responds 204 with no body', async () => {
+    const res = await callAddMember({ user: manager, params: { id: 'team-id', userId: 'user-id' } });
+    expect(res.sendStatus).toHaveBeenCalledWith(204);
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it('passes the caller, the team id and the user id to the service', async () => {
+    await callAddMember({ user: manager, params: { id: 'team-id', userId: 'user-id' } });
+    expect(addTeamMemberMock).toHaveBeenCalledWith(manager, 'team-id', 'user-id');
+  });
+
+  it('rejects with 401 when no user is authenticated', async () => {
+    await expect(callAddMember({ params: { id: 'team-id', userId: 'user-id' } })).rejects.toMatchObject({ status: 401 });
+    expect(addTeamMemberMock).not.toHaveBeenCalled();
+  });
+}); 
+
+describe('removeTeamMemberHandler', () => {
+  beforeEach(() => {
+    removeTeamMemberMock.mockResolvedValue(undefined); 
+  }); 
+
+  it('responds 204 with no body', async () => {
+    const res = await callRemoveMember({ user: manager, params: { id: 'team-id', userId: 'user-id' } });
+    expect(res.sendStatus).toHaveBeenCalledWith(204);
+    expect(res.json).not.toHaveBeenCalled();
+  });
+
+  it('passes the caller, the team id and the user id to the service', async () => {
+    await callRemoveMember({ user: manager, params: { id: 'team-id', userId: 'user-id' } });
+    expect(removeTeamMemberMock).toHaveBeenCalledWith(manager, 'team-id', 'user-id');
+  });
+
+  it('rejects with 401 when no user is authenticated', async () => {
+    await expect(callRemoveMember({ params: { id: 'team-id', userId: 'user-id' } })).rejects.toMatchObject({ status: 401 });
+    expect(removeTeamMemberMock).not.toHaveBeenCalled();
+  });
+})
 
 
 
