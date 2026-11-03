@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { authenticate, requireRole } from '../middlewares/auth';
 import validate from '../middlewares/validate';
 import { idParamSchema } from '../schemas/common.schema';
-import { createTeamSchema, listTeamsQuerySchema, updateTeamSchema } from '../schemas/team.schema';
-import { createTeamHandler, getTeamHandler, listTeamsHandler, updateTeamHandler, deleteTeamHandler } from '../controllers/team.controller';
+import { createTeamSchema, listTeamsQuerySchema, teamMemberParamSchema, updateTeamSchema } from '../schemas/team.schema';
+import { createTeamHandler, getTeamHandler, listTeamsHandler, updateTeamHandler, deleteTeamHandler, addTeamMemberHandler, removeTeamMemberHandler } from '../controllers/team.controller';
 
 const router = Router();
 
@@ -33,6 +33,22 @@ router.delete(
   requireRole('manager', 'admin'), 
   validate({ params: idParamSchema }), 
   deleteTeamHandler,
-)
+); 
+
+router.put(
+  '/:id/members/:userId', 
+  authenticate, 
+  requireRole('manager', 'admin'), 
+  validate({ params: teamMemberParamSchema }), 
+  addTeamMemberHandler, 
+); 
+
+router.delete(
+  '/:id/members/:userId', 
+  authenticate, 
+  requireRole('manager', 'admin'), 
+  validate({ params: teamMemberParamSchema }), 
+  removeTeamMemberHandler, 
+); 
 
 export default router;

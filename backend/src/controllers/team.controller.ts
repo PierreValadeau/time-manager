@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import type { ListTeamsQuery } from '../schemas/team.schema';
 import AppError from '../errors/AppError';
-import { createTeam, listTeams, getTeam, updateTeam, deleteTeam } from '../services/team.service';
+import { createTeam, listTeams, getTeam, updateTeam, deleteTeam, addTeamMember, removeTeamMember } from '../services/team.service';
 
 // POST /teams
 export const createTeamHandler: RequestHandler = async (req, res) => {
@@ -47,5 +47,25 @@ export const deleteTeamHandler: RequestHandler<{ id: string }> = async (req, res
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
   }
   await deleteTeam(req.user, req.params.id); 
+  res.sendStatus(204); 
+}
+
+//PUT /teams/:id/members/:userId
+export const addTeamMemberHandler: RequestHandler<{ id: string, userId: string }> = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
+  }
+
+  await addTeamMember(req.user, req.params.id, req.params.userId); 
+  res.sendStatus(204); 
+}
+
+//DELETE /teams/:id/members/:userId
+export const removeTeamMemberHandler: RequestHandler<{ id: string, userId: string }> = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
+  }
+
+  await removeTeamMember(req.user, req.params.id, req.params.userId); 
   res.sendStatus(204); 
 }
