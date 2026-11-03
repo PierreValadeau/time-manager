@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import prisma from '../../../src/lib/prisma';
 import AppError from '../../../src/errors/AppError';
-import { createTeam, deleteTeam } from '../../../src/services/team.service';
+import { createTeam, deleteTeam, addTeamMember, removeTeamMember } from '../../../src/services/team.service';
 
 // Real database, nothing mocked: the cascade and the unique constraint come from PostgreSQL
 const admin = { id: 'admin-id', role: 'admin' as const };
@@ -44,3 +44,30 @@ describe('createTeam (PostgreSQL)', () => {
     expect(await prisma.team.count()).toBe(1);
   });
 });
+
+describe('team members (PostgreSQL)', () => {
+  it('adds a member once, however many times it is called', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const employee = await createUser('employee@trinity.com', 'employee');
+    const team = await prisma.team.create({ data: { name: 'Team A', managerId: manager.id } });
+
+    await addTeamMember(admin, team.id, employee.id);
+    await addTeamMember(admin, team.id, employee.id);
+
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(1);
+  });
+
+  it('removes the membership but keeps the user', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const employee = await createUser('employee@trinity.com', 'employee');
+    const team = await prisma.team.create({
+      data: { name: 'Team A', managerId: manager.id, members: { create: { userId: employee.id } } },
+    });
+
+    await removeTeamMember(admin, team.id, employee.id);
+
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
+    expect(await prisma.user.findUnique({ where: { id: employee.id } })).not.toBeNull();
+  });
+});
+
