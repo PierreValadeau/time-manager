@@ -10,7 +10,9 @@ import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 vi.mock('../../../src/lib/prisma', () => ({
   default: { 
     user: { findUnique: vi.fn() }, 
-    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() } },
+    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+    teamMember: { upsert: vi.fn(), deleteMany: vi.fn() }
+  },
 }));
 
 const findUserMock = prisma.user.findUnique as unknown as Mock;
@@ -20,6 +22,8 @@ const findTeamMock = prisma.team.findUnique as unknown as Mock;
 const countTeamsMock = prisma.team.count as unknown as Mock;
 const updateTeamMock = prisma.team.update as unknown as Mock; 
 const deleteTeamMock = prisma.team.delete as unknown as Mock; 
+const upsertMemberMock = prisma.teamMember.upsert as unknown as Mock; 
+const deleteMembersMock = prisma.teamMember.deleteMany as unknown as Mock; 
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
 // Zod expects a real UUID v4 for managerId
@@ -47,7 +51,22 @@ const dbListTeam = {
   _count: { members: 3 },
 };
 
+const MEMBER_ID = 'b1e2c3d4-0000-4000-8000-000000000002';
 
+const memberRequest = async (
+  method: 'PUT' | 'DELETE',
+  role: 'employee' | 'manager' | 'admin' | null,
+  userId = MEMBER_ID,
+  teamId = TEAM_ID,
+) => {
+  const headers: Record<string, string> = {};
+  if (role) {
+    headers.cookie = `${ACCESS_TOKEN_COOKIE}=${signAccessToken({ id: `${role}-id`, role })}`;
+  }
+  const res = await fetch(`${baseUrl}/api/v1/teams/${teamId}/members/${userId}`, { method, headers });
+  // 204 has no body; errors are JSON
+  return { status: res.status, text: await res.text() };
+};
 
 let server: Server;
 let baseUrl: string;
@@ -431,3 +450,85 @@ describe('DELETE /api/v1/teams/:id', () => {
   });
 });
 
+describe('PUT /api/v1/teams/:id/members/:userId', () => {
+  beforeEach(() => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'manager-id' });
+    findUserMock.mockResolvedValue({ deletedAt: null });
+    upsertMemberMock.mockResolvedValue({});
+  });
+
+  it('answers 401 without session', async () => {
+    expect((await memberRequest('PUT', null)).status).toBe(401);
+  });
+
+  it('answers 403 to an employee', async () => {
+    expect((await memberRequest('PUT', 'employee')).status).toBe(403);
+    expect(upsertMemberMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 400 when userId is not a UUID', async () => {
+    expect((await memberRequest('PUT', 'manager', 'not-a-uuid')).status).toBe(400);
+  });
+
+  it('answers 404 when the team does not exist', async () => {
+    findTeamMock.mockResolvedValue(null);
+    expect((await memberRequest('PUT', 'manager')).status).toBe(404);
+  });
+
+  it('answers 403 to a manager who does not manage the team', async () => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
+    expect((await memberRequest('PUT', 'manager')).status).toBe(403);
+  });
+
+  it('answers 404 when the user does not exist', async () => {
+    findUserMock.mockResolvedValue(null);
+    expect((await memberRequest('PUT', 'manager')).status).toBe(404);
+  });
+
+  it('answers 204 with no body to the team manager', async () => {
+    const res = await memberRequest('PUT', 'manager');
+    expect(res.status).toBe(204);
+    expect(res.text).toBe('');
+  });
+
+  it('answers 204 again when the user is already a member', async () => {
+    expect((await memberRequest('PUT', 'manager')).status).toBe(204);
+    expect((await memberRequest('PUT', 'manager')).status).toBe(204);
+  });
+});
+
+describe('DELETE /api/v1/teams/:id/members/:userId', () => {
+  beforeEach(() => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'manager-id' });
+    findUserMock.mockResolvedValue({ deletedAt: null });
+    deleteMembersMock.mockResolvedValue({ count: 1 });
+  });
+
+  it('answers 404 when the user does not exist', async () => {
+    findUserMock.mockResolvedValue(null);
+    expect((await memberRequest('DELETE', 'manager')).status).toBe(404);
+    expect(deleteMembersMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 204 when the user exists but is not a member', async () => {
+    deleteMembersMock.mockResolvedValue({ count: 0 });
+    expect((await memberRequest('DELETE', 'manager')).status).toBe(204);
+  });
+
+  it('answers 403 to an employee', async () => {
+  expect((await memberRequest('DELETE', 'employee')).status).toBe(403);
+  expect(deleteMembersMock).not.toHaveBeenCalled();
+});
+
+it('answers 403 to a manager who does not manage the team', async () => {
+  findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
+  expect((await memberRequest('DELETE', 'manager')).status).toBe(403);
+});
+
+it('removes the membership and answers 204 to the team manager', async () => {
+  const res = await memberRequest('DELETE', 'manager');
+  expect(res.status).toBe(204);
+  expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: TEAM_ID, userId: MEMBER_ID } });
+});
+
+});

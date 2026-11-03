@@ -19,6 +19,12 @@ export const updateTeamSchema = z.object({
     managerId: z.uuidv4(),
 }); 
 
+//PUT and DELETE /teams/:id/members/:userId
+export const teamMemberParamSchema = z.object({
+    id: z.uuidv4(), 
+    userId: z.uuidv4(), 
+}); 
+
 export type CreateTeamInput = z.infer<typeof createTeamSchema>; 
 export type ListTeamsQuery = z.infer<typeof listTeamsQuerySchema>;
 export type UpdateTeamInput = z.infer<typeof updateTeamSchema>;  

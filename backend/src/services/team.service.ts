@@ -90,6 +90,18 @@ async function assertActiveManager(managerId: string): Promise<void> {
     }
 } 
 
+//verify if the user exist: 404 if not or anonymized
+async function assertUserExist(userId: string): Promise<void> {
+    const user = await prisma.user.findUnique({
+        where: { id: userId }, 
+        select: { deletedAt: true }
+    }); 
+
+    if (!user || user.deletedAt) {
+        throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable'); 
+    }
+}
+
 async function assertCanManageTeam(actor: Caller, teamId: string): Promise<void> {
     const team = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true }}); 
     if (!team) {
@@ -175,4 +187,24 @@ export async function updateTeam(actor: Caller, teamId: string, input: UpdateTea
 export async function deleteTeam(actor: Caller, teamId: string): Promise<void> {
     await assertCanManageTeam(actor, teamId); 
     await prisma.team.delete({ where: { id: teamId }}); 
+}
+
+//add a member to a team PUT /teams/:id/members/:userId, idempotent
+export async function addTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> { 
+    await assertCanManageTeam(actor, teamId); 
+    await assertUserExist(userId);
+
+    await prisma.teamMember.upsert({
+        where: { teamId_userId: { teamId, userId } }, 
+        create: { teamId, userId }, 
+        update: {}, 
+    }); 
+}
+
+//remove a member, DELETE /teams//:id/members/:userId -> the user account itself is untouched
+export async function removeTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> {
+    await assertCanManageTeam(actor, teamId);
+    await assertUserExist(userId);
+
+    await prisma.teamMember.deleteMany({ where: { teamId, userId }}); 
 }
