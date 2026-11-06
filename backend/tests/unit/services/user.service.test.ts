@@ -3,16 +3,19 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../../src/lib/prisma';
 import { hashToken } from '../../../src/lib/token';
 import { sendSetupLink } from '../../../src/services/mail.service';
-import { createUser } from '../../../src/services/user.service';
+import { createUser, listUsers } from '../../../src/services/user.service';
 import type { Caller } from '../../../src/services/scope.service';
 import type { CreateUserInput } from '../../../src/schemas/user.schema';
 
 // No database: Prisma and the mailer are replaced by mocks
-vi.mock('../../../src/lib/prisma', () => ({ default: { user: { create: vi.fn() } } }));
+vi.mock('../../../src/lib/prisma', () => ({ default: { user: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() }, team: { findMany: vi.fn() } } }));
 vi.mock('../../../src/services/mail.service', () => ({ sendSetupLink: vi.fn() }));
 
 const createMock = prisma.user.create as unknown as Mock;
 const sendSetupLinkMock = sendSetupLink as unknown as Mock;
+const findUsersMock = prisma.user.findMany as unknown as Mock; 
+const countUsersMock = prisma.user.count as unknown as Mock 
+const findTeamsMock = prisma.team.findMany as unknown as Mock; 
 
 const admin: Caller = { id: 'admin-id', role: 'admin' };
 const manager: Caller = { id: 'manager-id', role: 'manager' };
@@ -36,6 +39,15 @@ const dbUser = {
   updatedAt: new Date('2026-10-07T10:00:00Z'),
   memberships: [],
 };
+
+// A row as Prisma returns it with userSelect
+const listedUser = (id: string, teamIds: string[] = []) => ({
+  ...dbUser,
+  id, 
+  email: `${id}@trinity.com`,
+  memberships: teamIds.map(teamId => ({ team: { id: teamId, name: `Team ${teamId}` } })),
+});
+
 
 // Prisma error for a unique constraint violation on the given column
 const uniqueViolation = (column: string) =>
@@ -219,3 +231,81 @@ describe('createUser: response', () => {
     expect(user).toEqual({ id: 'new-user-id', firstName: 'Jean', lastName: 'Dupont', role: 'employee' });
   });
 });
+
+describe('listUsers', () => {
+  const query = { page: 1, limit: 20 };
+
+  beforeEach(() => {
+    findUsersMock.mockResolvedValue([]);
+    countUsersMock.mockResolvedValue(0);
+    findTeamsMock.mockResolvedValue([]);
+  });
+
+  const lastWhere = () => findUsersMock.mock.lastCall![0].where;
+
+  it('never returns anonymized accounts', async () => {
+    await listUsers(admin, query);
+    expect(lastWhere()).toMatchObject({ deletedAt: null });
+  });
+
+  it('filters on role and team', async () => {
+    await listUsers(admin, { ...query, role: 'manager', teamId: 'team-id' });
+    expect(lastWhere()).toMatchObject({ role: 'manager', memberships: { some: { teamId: 'team-id' } } });
+  });
+
+  it('searches first name, last name and email, case-insensitive', async () => {
+    await listUsers(admin, { ...query, search: 'dur' });
+    expect(lastWhere().OR).toEqual([
+      { firstName: { contains: 'dur', mode: 'insensitive' } },
+      { lastName: { contains: 'dur', mode: 'insensitive' } },
+      { email: { contains: 'dur', mode: 'insensitive' } },
+    ]);
+  });
+
+  it('counts with the same filter as the page', async () => {
+    await listUsers(admin, { ...query, role: 'employee' });
+    expect(countUsersMock).toHaveBeenCalledWith({ where: lastWhere() });
+  });
+
+  it('skips the previous pages', async () => {
+    await listUsers(admin, { page: 3, limit: 10 });
+    expect(findUsersMock.mock.lastCall![0]).toMatchObject({ skip: 20, take: 10 });
+  });
+
+  it('returns the full profile of everyone to the admin', async () => {
+    findUsersMock.mockResolvedValue([listedUser('u1')]);
+    const { data } = await listUsers(admin, query);
+    expect(data[0]).toHaveProperty('email');
+    expect(findTeamsMock).not.toHaveBeenCalled();
+  });
+
+  it('gives a manager the full profile of their members, the reduced one for others', async () => {
+    findTeamsMock.mockResolvedValue([{ id: 'my-team' }]);
+    findUsersMock.mockResolvedValue([listedUser('member', ['my-team']), listedUser('outsider', ['other-team'])]);
+
+    const { data } = await listUsers(manager, query);
+
+    expect(data[0]).toHaveProperty('email');
+    expect(data[1]).toEqual({ id: 'outsider', firstName: 'Jean', lastName: 'Dupont', role: 'employee' });
+  });
+
+  it("looks up the manager's teams once, whatever the page size", async () => {
+    findUsersMock.mockResolvedValue([listedUser('a'), listedUser('b'), listedUser('c')]);
+    await listUsers(manager, query);
+    expect(findTeamsMock).toHaveBeenCalledTimes(1);
+    expect(findTeamsMock).toHaveBeenCalledWith({ where: { managerId: 'manager-id' }, select: { id: true } });
+  });
+
+  it('gives a manager their own full profile', async () => {
+    findUsersMock.mockResolvedValue([listedUser('manager-id')]);
+    const { data } = await listUsers(manager, query);
+    expect(data[0]).toHaveProperty('email');
+  });
+
+  it('returns the pagination meta', async () => {
+    countUsersMock.mockResolvedValue(42);
+    const result = await listUsers(admin, { page: 2, limit: 10 });
+    expect(result.meta).toEqual({ page: 2, limit: 10, total: 42 });
+  });
+});
+

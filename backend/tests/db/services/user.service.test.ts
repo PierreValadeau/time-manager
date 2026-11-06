@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import prisma from '../../../src/lib/prisma';
 import AppError from '../../../src/errors/AppError';
-import { createUser } from '../../../src/services/user.service';
+import { createUser, listUsers } from '../../../src/services/user.service';
 import { sendSetupLink } from '../../../src/services/mail.service';
 
 // Real database, only the mailer is mocked
@@ -42,3 +42,20 @@ describe('createUser (PostgreSQL)', () => {
     expect(await prisma.user.count()).toBe(1);
   });
 });
+
+describe('listUsers (PostgreSQL)', () => {
+  it('searches case-insensitively, filters on team and skips anonymized accounts', async () => {
+    const manager = await prisma.user.create({ data: { firstName: 'Nadia', lastName: 'Benali', email: 'nadia@trinity.com', role: 'manager' } });
+    const camille = await prisma.user.create({ data: { firstName: 'Camille', lastName: 'Durand', email: 'camille@trinity.com' } });
+    await prisma.user.create({ data: { firstName: 'Paul', lastName: 'Durand', email: 'paul@trinity.com', deletedAt: new Date() } });
+    const team = await prisma.team.create({
+      data: { name: 'Team A', managerId: manager.id, members: { create: { userId: camille.id } } },
+    });
+
+    const result = await listUsers(admin, { page: 1, limit: 20, search: 'DUR', teamId: team.id });
+
+    expect(result.data.map(user => user.id)).toEqual([camille.id]);
+    expect(result.meta.total).toBe(1);
+  });
+});
+
