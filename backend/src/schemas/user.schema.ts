@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { paginationSchema } from './common.schema';
 
 export const createUserSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
@@ -10,4 +11,12 @@ export const createUserSchema = z.object({
   role: z.enum(['employee', 'manager']).default('employee'),
 });
 
+// GET /users...
+export const listUsersQuerySchema = paginationSchema.extend({
+  search: z.string().trim().min(1).max(100).optional(), 
+  role: z.enum(['employee', 'manager', 'admin']).optional(), 
+  teamId: z.uuidv4().optional(),
+}); 
+
 export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>; 
