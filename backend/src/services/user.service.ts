@@ -2,7 +2,7 @@ import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
-import { isSelf, managedTeamIds, type Caller } from './scope.service';
+import { isManagerOfEmployee, isSelf, managedTeamIds, resolveUserId, type Caller } from './scope.service';
 import type { CreateUserInput, ListUsersQuery } from '../schemas/user.schema';
 import { generateToken, hashToken } from '../lib/token';
 import { escapeLike } from '../lib/escapeLike';
@@ -25,6 +25,8 @@ const getFrontendUrl = () => {
   }
   return value.replace(/\/+$/, '');
 };
+
+const forbidden = () => new AppError(403, 'FORBIDDEN', 'Droits insuffisants pour cette action');
 
 // P2002 on the email column (tokenHash is unique too)
 const isEmailTaken = (err: unknown) => {
@@ -161,4 +163,26 @@ export async function listUsers(actor: Caller, query: ListUsersQuery) {
     data: rows.map(user => (isInScope(user) ? toFullUser(user) : toReducedUser(user))),
     meta: { page, limit, total },
   };
+}
+
+// GET /users/:id: the full profile for self, a manager of the user and the admin
+// the reduced one for any other manager (contract, section 4)
+export async function getUser(actor: Caller, id: string) {
+  const userId = resolveUserId(actor, id);
+  const self = isSelf(actor, userId); 
+
+  // An employee only reads their own account. Refused before the lookup, so 
+  // the answer is the same wether the user exists or not.
+  if (!self && actor.role === 'employee') throw forbidden();
+
+  // Anonymized accounts no longer exist for the API (contract, section 4)
+  const user = await prisma.user.findUnique({ where: { 
+    id: userId, 
+    deletedAt: null 
+  }, select: userSelect });
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
+
+  // isManagerOfEmployee is also true for the admin
+  const fullProfile = self || (await isManagerOfEmployee(actor, userId));
+  return fullProfile ? toFullUser(user) : toReducedUser(user);
 }
