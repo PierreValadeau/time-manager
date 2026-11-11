@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { authenticate, requireRole } from '../middlewares/auth';
 import validate from '../middlewares/validate';
 import { createUserSchema, listUsersQuerySchema } from '../schemas/user.schema';
-import { createUserHandler, listUsersHandler } from '../controllers/user.controller';
+import { createUserHandler, getUserHandler, listUsersHandler } from '../controllers/user.controller';
+import { userLimiter } from '../middlewares/rateLimit';
+import { userIdParamSchema } from '../schemas/common.schema';
 
 const router = Router();
 
@@ -23,6 +25,15 @@ router.get(
   requireRole('manager', 'admin'), 
   validate({ query: listUsersQuerySchema }), 
   listUsersHandler,
-); 
+);
+
+// Contract, section 4: self, a manager or the admin; the scope is checked in the service
+router.get(
+  '/:id',
+  authenticate,
+  userLimiter,
+  validate({ params: userIdParamSchema }),
+  getUserHandler,
+);
 
 export default router;

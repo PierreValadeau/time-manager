@@ -14,7 +14,7 @@ import {
   type HoursSummary,
   type SessionStatus,
 } from './hours.service';
-import { isManagerOfEmployee, isSelf, type Caller } from './scope.service';
+import { isManagerOfEmployee, isSelf, resolveUserId, type Caller } from './scope.service';
 
 // Session object of the contract, section 6
 export type SessionDto = {
@@ -92,7 +92,7 @@ const forbidden = () => new AppError(403, 'FORBIDDEN', 'Droits insuffisants pour
 
 // GET /users/:id/clocks...
 export async function authorizeClockRead(caller: Caller, id: string): Promise<string> {
-  const userId = id === 'me' ? caller.id : id;
+  const userId = resolveUserId(caller, id);
   if (isSelf(caller, userId)) return userId;
 
   // An employee only reads their own clocks. Deliberately before the 404 check (unlike
