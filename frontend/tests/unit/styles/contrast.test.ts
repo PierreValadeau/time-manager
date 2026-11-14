@@ -32,6 +32,7 @@ function contrast(a: string, b: string): number {
 
 const TEXT = 4.5; // normal text (1.4.3)
 const UI = 3; // component outlines and focus indicator (1.4.11)
+const LARGE = 3; // large text, 24px and more (1.4.3)
 
 // [foreground, background, threshold, usage]
 const PAIRS: [string, string, number, string][] = [
@@ -51,6 +52,13 @@ const PAIRS: [string, string, number, string][] = [
   ['color-accent-100', 'color-accent-800', TEXT, 'accent tag, avatar'],
   ['color-neutral-200', 'color-neutral-800', TEXT, 'neutral tag'],
   ['color-accent-300', 'color-bg', TEXT, 'outline tag'],
+  ['color-neutral-600', 'color-surface', LARGE, 'clock seconds on the home page'],
+  // The on-duty hero fades from accent-900 to the surface: its darkest-contrast corner is accent-900
+  ['color-text', 'color-accent-900', TEXT, 'clock time, on duty'],
+  ['color-neutral-300', 'color-accent-900', TEXT, 'clock status, on duty'],
+  ['color-neutral-400', 'color-accent-900', TEXT, 'worked time, on duty'],
+  ['color-accent-400', 'color-accent-900', TEXT, 'clock-out button, on duty'],
+  ['color-neutral-600', 'color-accent-900', LARGE, 'clock seconds, on duty'],
   ['color-border-input', 'color-bg', UI, 'field outline, select (bg background)'],
   ['color-border-input', 'color-surface', UI, 'field outline in a card'],
   ['color-error', 'color-surface', UI, 'invalid field outline'],
