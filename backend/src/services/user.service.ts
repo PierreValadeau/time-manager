@@ -2,8 +2,8 @@ import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
-import { isSelf, type Caller } from './scope.service';
-import type { CreateUserInput, ListUsersQuery } from '../schemas/user.schema';
+import { isManagerOfEmployee, isSelf, resolveUserId, type Caller } from './scope.service';
+import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from '../schemas/user.schema';
 import { generateToken, hashToken } from '../lib/token'; 
 
 // Roles each caller may assign (contract, section 2); admin is never assignable
@@ -24,6 +24,8 @@ const getFrontendUrl = () => {
   }
   return value.replace(/\/+$/, '');
 };
+
+const forbidden = () => new AppError(403, 'FORBIDDEN', 'Droits insuffisants pour cette action');
 
 // P2002 on the email column (tokenHash is unique too)
 const isEmailTaken = (err: unknown) => {
@@ -162,4 +164,68 @@ export async function listUsers(actor: Caller, query: ListUsersQuery) {
       data: rows.map(user => (isInScope(user) ? toFullUser(user) : toReducedUser(user))), 
       meta: { page, limit, total }
     }
+}
+
+// GET /users/:id: the full profile for self, a manager of the user and the admin
+// the reduced one for any other manager (contract, section 4)
+export async function getUser(actor: Caller, id: string) {
+  const userId = resolveUserId(actor, id);
+  const self = isSelf(actor, userId); 
+
+  // An employee only reads their own account. Refused before the lookup, so 
+  // the answer is the same wether the user exists or not.
+  if (!self && actor.role === 'employee') throw forbidden();
+
+  // Anonymized accounts no longer exist for the API (contract, section 4)
+  const user = await prisma.user.findUnique({ where: { 
+    id: userId, 
+    deletedAt: null,
+  }, select: userSelect });
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
+
+  // isManagerOfEmployee is also true for the admin
+  const fullProfile = self || (await isManagerOfEmployee(actor, userId));
+  return fullProfile ? toFullUser(user) : toReducedUser(user);
+}
+
+// PUT /users/:id: self, manager of the employee or the admin
+export async function updateUser(actor: Caller, id: string, input: UpdateUserInput) {
+  const userId = resolveUserId(actor, id);
+  const self = isSelf(actor, userId);
+
+  // An employee only edits their own account. Refused before the lookup, so
+  // the answer is the same whether the user exists or not.
+  if (!self && actor.role === 'employee') throw forbidden();
+
+  // Anonymized accounts no longer exist for the API (contract, section 4)
+  const user = await prisma.user.findUnique({ where: {
+    id: userId,
+    deletedAt: null,
+  }, select: { role: true }});
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
+
+  if (!self && actor.role !== 'admin') {
+    if (user.role === 'manager') throw forbidden();
+    if (!(await isManagerOfEmployee(actor, userId))) throw forbidden();
+  }
+
+  // an unchanged role is accepted from anyone, so a client can send back the whole profile
+  const roleChanges = input.role !== undefined && input.role !== user.role;
+  if (roleChanges && actor.role !== 'admin') throw forbidden();
+  if (roleChanges && user.role === 'admin') throw forbidden();
+
+  let updatedUser: UserRecord;
+  try {
+    updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: input,
+      select: userSelect });
+  } catch (err) {
+    if (isEmailTaken(err)) {
+      throw new AppError(409, 'CONFLICT', 'Un utilisateur avec cet email existe déjà');
+    }
+    throw err;
+  }
+
+  return toFullUser(updatedUser);
 }

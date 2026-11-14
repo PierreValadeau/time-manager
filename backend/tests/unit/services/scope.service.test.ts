@@ -4,6 +4,7 @@ import {
   isSelf,
   isTeamManager,
   isManagerOfEmployee,
+  resolveUserId,
   type Caller,
 } from '../../../src/services/scope.service';
 
@@ -43,6 +44,20 @@ describe('isSelf', () => {
 
   it("is false for someone else's id", () => {
     expect(isSelf(employee, 'colleague-id')).toBe(false);
+  });
+});
+
+describe('resolveUserId', () => {
+  it('turns "me" into the caller id', () => {
+    expect(resolveUserId(employee, 'me')).toBe('employee-id');
+  });
+
+  it('works for every role, the admin included', () => {
+    expect(resolveUserId(admin, 'me')).toBe('admin-id');
+  });
+
+  it("returns any other id unchanged, even someone else's: it never checks access", () => {
+    expect(resolveUserId(employee, 'colleague-id')).toBe('colleague-id');
   });
 });
 
