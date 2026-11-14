@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { authenticate, requireRole } from '../middlewares/auth';
 import validate from '../middlewares/validate';
-import { createUserSchema } from '../schemas/user.schema';
-import { createUserHandler } from '../controllers/user.controller';
+import { createUserSchema, listUsersQuerySchema } from '../schemas/user.schema';
+import { createUserHandler, listUsersHandler } from '../controllers/user.controller';
 
 const router = Router();
 
@@ -15,5 +15,14 @@ router.post(
   validate({ body: createUserSchema }),
   createUserHandler,
 );
+
+// Contract, section 4: managers and the admin; employees get 403 before the query is read
+router.get(
+  '/', 
+  authenticate, 
+  requireRole('manager', 'admin'), 
+  validate({ query: listUsersQuerySchema }), 
+  listUsersHandler,
+); 
 
 export default router;
