@@ -1,11 +1,14 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { isTeamManager, Caller } from './scope.service';
 import type { CreateTeamInput, ListTeamsQuery, UpdateTeamInput } from '../schemas/team.schema';
 import { escapeLike } from '../lib/escapeLike';
 
-// Team object (contract, section 5)
+
+// User roles that can be added to a team
+const TEAM_MEMBER_ROLES: UserRole[] = ['employee', 'manager'];
+
 export const teamSelect = {
     id: true, 
     name: true, 
@@ -97,16 +100,18 @@ async function assertActiveManager(managerId: string): Promise<void> {
     }
 } 
 
-//verify if the user exist: 404 if not or anonymized
-async function assertUserExist(userId: string): Promise<void> {
+//verify if the user exists: 404 if not or anonymized
+async function assertUserExists(userId: string): Promise<{ role: UserRole }> {
     const user = await prisma.user.findUnique({
         where: { id: userId }, 
-        select: { deletedAt: true }
+        select: { role: true, deletedAt: true }
     }); 
 
     if (!user || user.deletedAt) {
         throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable'); 
     }
+
+    return user;
 }
 
 async function assertCanManageTeam(actor: Caller, teamId: string): Promise<void> {
@@ -210,12 +215,19 @@ export async function deleteTeam(actor: Caller, teamId: string): Promise<void> {
 }
 
 //add a member to a team PUT /teams/:id/members/:userId, idempotent
-export async function addTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> { 
-    await assertCanManageTeam(actor, teamId); 
-    await assertUserExist(userId);
+export async function addTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> {
+    await assertCanManageTeam(actor, teamId);
+    const user = await assertUserExists(userId);
+
+    // An admin in a team would give that team's manager rights over the admin account
+    if (!TEAM_MEMBER_ROLES.includes(user.role)) {
+        throw new AppError(400, 'VALIDATION_ERROR', "Ce compte ne peut pas être membre d'une équipe", [
+            { field: 'userId', issue: 'invalid' }, 
+        ]);
+    }
 
     await prisma.teamMember.upsert({
-        where: { teamId_userId: { teamId, userId } }, 
+        where: { teamId_userId: { teamId, userId } },
         create: { teamId, userId }, 
         update: {}, 
     }); 
@@ -224,7 +236,7 @@ export async function addTeamMember(actor: Caller, teamId: string, userId: strin
 //remove a member, DELETE /teams//:id/members/:userId -> the user account itself is untouched
 export async function removeTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> {
     await assertCanManageTeam(actor, teamId);
-    await assertUserExist(userId);
+    await assertUserExists(userId);
 
     await prisma.teamMember.deleteMany({ where: { teamId, userId }}); 
 }

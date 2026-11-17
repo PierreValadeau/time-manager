@@ -360,7 +360,7 @@ describe('addTeamMember', () => {
   beforeEach(() => {
     findTeamMock.mockResolvedValue({ id: 'team-id' });
     isTeamManagerMock.mockResolvedValue(true);
-    findUserMock.mockResolvedValue({ deletedAt: null });
+    findUserMock.mockResolvedValue({ role: 'employee', deletedAt: null });
     upsertMemberMock.mockResolvedValue({});
   });
 
@@ -392,8 +392,29 @@ describe('addTeamMember', () => {
   });
 
   it('answers 404 for an anonymized user', async () => {
-    findUserMock.mockResolvedValue({ deletedAt: new Date() });
+    findUserMock.mockResolvedValue({ role: 'employee', deletedAt: new Date() });
     await expect(addTeamMember(manager, 'team-id', 'user-id')).rejects.toMatchObject({ status: 404 });
+  });
+
+  it.each([
+    ['a manager', manager],
+    ['the admin', admin],
+  ])('refuses the admin account as a member, even when %s adds it (400)', async (_label, actor) => {
+    // A member admin would give the team manager rights over the admin account
+    findUserMock.mockResolvedValue({ role: 'admin', deletedAt: null });
+
+    await expect(addTeamMember(actor, 'team-id', 'admin-id')).rejects.toMatchObject({
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      details: [{ field: 'userId', issue: 'invalid' }],
+    });
+    expect(upsertMemberMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a manager as a member of another team', async () => {
+    findUserMock.mockResolvedValue({ role: 'manager', deletedAt: null });
+    await addTeamMember(manager, 'team-id', 'other-manager-id');
+    expect(upsertMemberMock).toHaveBeenCalled();
   });
 });
 
@@ -401,13 +422,19 @@ describe('removeTeamMember', () => {
   beforeEach(() => {
     findTeamMock.mockResolvedValue({ id: 'team-id' });
     isTeamManagerMock.mockResolvedValue(true);
-    findUserMock.mockResolvedValue({ deletedAt: null });
+    findUserMock.mockResolvedValue({ role: 'employee', deletedAt: null });
     deleteMembersMock.mockResolvedValue({ count: 1 });
   });
 
   it('deletes only the membership row', async () => {
     await removeTeamMember(manager, 'team-id', 'user-id');
     expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: 'team-id', userId: 'user-id' } });
+  });
+
+  it('still removes an admin added before the rule existed', async () => {
+    findUserMock.mockResolvedValue({ role: 'admin', deletedAt: null });
+    await removeTeamMember(manager, 'team-id', 'admin-id');
+    expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: 'team-id', userId: 'admin-id' } });
   });
 
   it('does not fail when the user is not a member', async () => {

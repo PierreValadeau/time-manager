@@ -7,7 +7,7 @@ import { createTeam, deleteTeam, getTeam, listTeams, addTeamMember, removeTeamMe
 const admin = { id: 'admin-id', role: 'admin' as const };
 
 // setup.ts empties every table before each test: each test creates its own rows
-const createUser = (email: string, role: 'employee' | 'manager') =>
+const createUser = (email: string, role: 'employee' | 'manager' | 'admin') =>
   prisma.user.create({ data: { firstName: 'Test', lastName: role, email, role } });
 
 describe('deleteTeam (PostgreSQL)', () => {
@@ -119,5 +119,15 @@ describe('team members (PostgreSQL)', () => {
 
     expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
     expect(await prisma.user.findUnique({ where: { id: employee.id } })).not.toBeNull();
+  });
+
+  it('never adds the admin account to a team', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const root = await createUser('root@trinity.com', 'admin');
+    const team = await prisma.team.create({ data: { name: 'Team A', managerId: manager.id } });
+    const caller = { id: manager.id, role: 'manager' as const };
+
+    await expect(addTeamMember(caller, team.id, root.id)).rejects.toMatchObject({ status: 400 });
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
   });
 });

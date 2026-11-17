@@ -465,7 +465,7 @@ describe('DELETE /api/v1/teams/:id', () => {
 describe('PUT /api/v1/teams/:id/members/:userId', () => {
   beforeEach(() => {
     findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'manager-id' });
-    findUserMock.mockResolvedValue({ deletedAt: null });
+    findUserMock.mockResolvedValue({ role: 'employee', deletedAt: null });
     upsertMemberMock.mockResolvedValue({});
   });
 
@@ -507,12 +507,25 @@ describe('PUT /api/v1/teams/:id/members/:userId', () => {
     expect((await memberRequest('PUT', 'manager')).status).toBe(204);
     expect((await memberRequest('PUT', 'manager')).status).toBe(204);
   });
+
+  it('answers 400 with the contract error format when the user is the admin', async () => {
+    findUserMock.mockResolvedValue({ role: 'admin', deletedAt: null });
+
+    const res = await memberRequest('PUT', 'manager');
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.text).error).toMatchObject({
+      code: 'VALIDATION_ERROR',
+      details: [{ field: 'userId', issue: 'invalid' }],
+    });
+    expect(upsertMemberMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/v1/teams/:id/members/:userId', () => {
   beforeEach(() => {
     findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'manager-id' });
-    findUserMock.mockResolvedValue({ deletedAt: null });
+    findUserMock.mockResolvedValue({ role: 'employee', deletedAt: null });
     deleteMembersMock.mockResolvedValue({ count: 1 });
   });
 
