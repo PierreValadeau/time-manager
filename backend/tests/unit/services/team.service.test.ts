@@ -58,7 +58,7 @@ const dbTeam = {
 beforeEach(() => {
   vi.clearAllMocks();
 
-  findUserMock.mockResolvedValue({ role: 'manager', deleteAt: null });
+  findUserMock.mockResolvedValue({ role: 'manager', deletedAt: null });
   createTeamMock.mockResolvedValue(dbTeam);
 });
 
