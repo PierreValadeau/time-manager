@@ -9,6 +9,7 @@ export const createTeamHandler: RequestHandler = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
   }
+
   const team = await createTeam(req.user, req.body);
   res.status(201).json(team);
 };
@@ -38,6 +39,7 @@ export const updateTeamHandler: RequestHandler<{ id: string }> = async (req, res
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
   }
+
   res.json(await updateTeam(req.user, req.params.id, req.body));
 };
 
@@ -46,7 +48,7 @@ export const deleteTeamHandler: RequestHandler<{ id: string }> = async (req, res
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
   }
-  
+
   await deleteTeam(req.user, req.params.id);
   res.sendStatus(204);
 };
