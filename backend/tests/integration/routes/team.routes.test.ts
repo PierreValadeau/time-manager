@@ -535,6 +535,12 @@ describe('DELETE /api/v1/teams/:id/members/:userId', () => {
     expect(deleteMembersMock).not.toHaveBeenCalled();
   });
 
+  it('answers 204 and removes the membership of an anonymized user', async () => {
+    findUserMock.mockResolvedValue({ id: MEMBER_ID, role: 'employee', deletedAt: new Date() });
+    expect((await memberRequest('DELETE', 'manager')).status).toBe(204);
+    expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: TEAM_ID, userId: MEMBER_ID } });
+  });
+
   it('answers 204 when the user exists but is not a member', async () => {
     deleteMembersMock.mockResolvedValue({ count: 0 });
     expect((await memberRequest('DELETE', 'manager')).status).toBe(204);

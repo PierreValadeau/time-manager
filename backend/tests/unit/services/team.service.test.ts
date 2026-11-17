@@ -430,6 +430,14 @@ describe('removeTeamMember', () => {
     expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: 'team-id', userId: 'user-id' } });
   });
 
+  it('removes an anonymized member, whose account still exists in the database', async () => {
+    // KAN-23 is not done yet: nothing removes the memberships of an anonymized account
+    findUserMock.mockResolvedValue({ id: 'gone-id', role: 'employee', deletedAt: new Date() });
+
+    await expect(removeTeamMember(manager, 'team-id', 'gone-id')).resolves.toBeUndefined();
+    expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: 'team-id', userId: 'gone-id' } });
+  });
+
   it('still removes an admin added before the rule existed', async () => {
     findUserMock.mockResolvedValue({ role: 'admin', deletedAt: null });
     await removeTeamMember(manager, 'team-id', 'admin-id');

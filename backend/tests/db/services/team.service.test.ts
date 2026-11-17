@@ -121,6 +121,33 @@ describe('team members (PostgreSQL)', () => {
     expect(await prisma.user.findUnique({ where: { id: employee.id } })).not.toBeNull();
   });
 
+  it('removes an anonymized member from a team and keeps the anonymized account', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const gone = await prisma.user.create({
+      data: { firstName: 'Utilisateur', lastName: 'supprimé', email: 'deleted-1@trinity.invalid', deletedAt: new Date() },
+    });
+    const team = await prisma.team.create({
+      data: { name: 'Team A', managerId: manager.id, members: { create: { userId: gone.id } } },
+    });
+    const caller = { id: manager.id, role: 'manager' as const };
+
+    await removeTeamMember(caller, team.id, gone.id);
+
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
+    expect(await prisma.user.findUnique({ where: { id: gone.id } })).not.toBeNull();
+  });
+
+  it('still refuses to add an anonymized account (404)', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const gone = await prisma.user.create({
+      data: { firstName: 'Utilisateur', lastName: 'supprimé', email: 'deleted-1@trinity.invalid', deletedAt: new Date() },
+    });
+    const team = await prisma.team.create({ data: { name: 'Team A', managerId: manager.id } });
+
+    await expect(addTeamMember(admin, team.id, gone.id)).rejects.toMatchObject({ status: 404 });
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
+  });
+
   it('never adds the admin account to a team', async () => {
     const manager = await createUser('manager@trinity.com', 'manager');
     const root = await createUser('root@trinity.com', 'admin');

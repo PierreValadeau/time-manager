@@ -100,8 +100,8 @@ async function assertActiveManager(managerId: string): Promise<void> {
   }
 }
 
-//verify if the user exists: 404 if not or anonymized
-async function assertUserExists(userId: string): Promise<{ role: UserRole }> {
+// Verify if the user is active: 404 if not or anonymized
+async function assertActiveUser(userId: string): Promise<{ role: UserRole }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: { role: true, deletedAt: true }
@@ -112,6 +112,16 @@ async function assertUserExists(userId: string): Promise<{ role: UserRole }> {
   }
 
   return user;
+}
+
+// Any row, anonymized included, so its memberships can still be cleaned up
+async function assertUserExists(userId: string): Promise<void> {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true }
+    });
+
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
 }
 
 async function assertCanManageTeam(actor: Caller, teamId: string): Promise<void> {
@@ -217,7 +227,7 @@ export async function deleteTeam(actor: Caller, teamId: string): Promise<void> {
 //add a member to a team PUT /teams/:id/members/:userId, idempotent
 export async function addTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> {
   await assertCanManageTeam(actor, teamId);
-  const user = await assertUserExists(userId);
+  const user = await assertActiveUser(userId);
 
   // An admin in a team would give that team's manager rights over the admin account
   if (!TEAM_MEMBER_ROLES.includes(user.role)) {
