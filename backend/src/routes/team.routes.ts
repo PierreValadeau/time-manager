@@ -15,40 +15,40 @@ router.post(
   createTeamHandler,
 );
 
-router.get('/', authenticate, validate({ query: listTeamsQuerySchema }), listTeamsHandler); 
+router.get('/', authenticate, validate({ query: listTeamsQuerySchema }), listTeamsHandler);
 
-router.get('/:id', authenticate, validate({ params: idParamSchema}), getTeamHandler); 
+router.get('/:id', authenticate, validate({ params: idParamSchema }), getTeamHandler);
 
 router.put(
-  '/:id', 
-  authenticate, 
-  requireRole('manager', 'admin'), 
-  validate({ params: idParamSchema, body: updateTeamSchema }), 
+  '/:id',
+  authenticate,
+  requireRole('manager', 'admin'),
+  validate({ params: idParamSchema, body: updateTeamSchema }),
   updateTeamHandler,
-); 
+);
 
 router.delete(
-  '/:id', 
-  authenticate, 
-  requireRole('manager', 'admin'), 
-  validate({ params: idParamSchema }), 
+  '/:id',
+  authenticate,
+  requireRole('manager', 'admin'),
+  validate({ params: idParamSchema }),
   deleteTeamHandler,
-); 
+);
 
 router.put(
-  '/:id/members/:userId', 
-  authenticate, 
-  requireRole('manager', 'admin'), 
-  validate({ params: teamMemberParamSchema }), 
-  addTeamMemberHandler, 
-); 
+  '/:id/members/:userId',
+  authenticate,
+  requireRole('manager', 'admin'),
+  validate({ params: teamMemberParamSchema }),
+  addTeamMemberHandler,
+);
 
 router.delete(
-  '/:id/members/:userId', 
-  authenticate, 
-  requireRole('manager', 'admin'), 
-  validate({ params: teamMemberParamSchema }), 
-  removeTeamMemberHandler, 
-); 
+  '/:id/members/:userId',
+  authenticate,
+  requireRole('manager', 'admin'),
+  validate({ params: teamMemberParamSchema }),
+  removeTeamMemberHandler,
+);
 
 export default router;

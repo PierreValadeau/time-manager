@@ -5,23 +5,23 @@ import { createTeam, getTeam, listTeams, updateTeam, deleteTeam, addTeamMember, 
 import { createTeamHandler, listTeamsHandler, getTeamHandler, updateTeamHandler, deleteTeamHandler, addTeamMemberHandler, removeTeamMemberHandler } from '../../../src/controllers/team.controller';
 
 // The service is tested on its own: here we only check the HTTP layer
-vi.mock('../../../src/services/team.service', () => ({ 
-  createTeam: vi.fn(), 
-  listTeams: vi.fn(), 
-  getTeam: vi.fn(), 
-  updateTeam: vi.fn(), 
-  deleteTeam: vi.fn(), 
-  addTeamMember: vi.fn(), 
+vi.mock('../../../src/services/team.service', () => ({
+  createTeam: vi.fn(),
+  listTeams: vi.fn(),
+  getTeam: vi.fn(),
+  updateTeam: vi.fn(),
+  deleteTeam: vi.fn(),
+  addTeamMember: vi.fn(),
   removeTeamMember: vi.fn()
 }));
 
 const createTeamMock = createTeam as unknown as Mock;
-const listTeamsMock = listTeams as unknown as Mock; 
-const getTeamMock = getTeam as unknown as Mock; 
+const listTeamsMock = listTeams as unknown as Mock;
+const getTeamMock = getTeam as unknown as Mock;
 const updateTeamMock = updateTeam as unknown as Mock;
 const deleteTeamMock = deleteTeam as unknown as Mock;
-const addTeamMemberMock = addTeamMember as unknown as Mock; 
-const removeTeamMemberMock = removeTeamMember as unknown as Mock; 
+const addTeamMemberMock = addTeamMember as unknown as Mock;
+const removeTeamMemberMock = removeTeamMember as unknown as Mock;
 
 const manager = { id: 'manager-id', role: 'manager' as const };
 const body = { name: 'Team A' };
@@ -36,11 +36,11 @@ const makeRes = () => {
 const call = (req: Partial<Request>, res = makeRes()) =>
   Promise.resolve(createTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
 
-const callList = (req: Partial<Request>, res = makeRes()) => 
-  Promise.resolve(listTeamsHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
+const callList = (req: Partial<Request>, res = makeRes()) =>
+  Promise.resolve(listTeamsHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
 
-const callGet = (req: Partial<Request>, res = makeRes()) => 
-  Promise.resolve(getTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
+const callGet = (req: Partial<Request>, res = makeRes()) =>
+  Promise.resolve(getTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
 
 const callUpdate = (req: Partial<Request>, res = makeRes()) =>
   Promise.resolve(updateTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
@@ -48,11 +48,11 @@ const callUpdate = (req: Partial<Request>, res = makeRes()) =>
 const callDelete = (req: Partial<Request>, res = makeRes()) =>
   Promise.resolve(deleteTeamHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
 
-const callAddMember = (req: Partial<Request>, res = makeRes()) => 
-  Promise.resolve(addTeamMemberHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
+const callAddMember = (req: Partial<Request>, res = makeRes()) =>
+  Promise.resolve(addTeamMemberHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
 
-const callRemoveMember = (req: Partial<Request>, res = makeRes()) => 
-  Promise.resolve(removeTeamMemberHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res); 
+const callRemoveMember = (req: Partial<Request>, res = makeRes()) =>
+  Promise.resolve(removeTeamMemberHandler(req as Request, res as unknown as Response, vi.fn())).then(() => res);
 
 
 beforeEach(() => {
@@ -208,8 +208,8 @@ describe('deleteTeamHandler', () => {
 
 describe('addTeamMemberHandler', () => {
   beforeEach(() => {
-    addTeamMemberMock.mockResolvedValue(undefined); 
-  }); 
+    addTeamMemberMock.mockResolvedValue(undefined);
+  });
 
   it('responds 204 with no body', async () => {
     const res = await callAddMember({ user: manager, params: { id: 'team-id', userId: 'user-id' } });
@@ -226,12 +226,12 @@ describe('addTeamMemberHandler', () => {
     await expect(callAddMember({ params: { id: 'team-id', userId: 'user-id' } })).rejects.toMatchObject({ status: 401 });
     expect(addTeamMemberMock).not.toHaveBeenCalled();
   });
-}); 
+});
 
 describe('removeTeamMemberHandler', () => {
   beforeEach(() => {
-    removeTeamMemberMock.mockResolvedValue(undefined); 
-  }); 
+    removeTeamMemberMock.mockResolvedValue(undefined);
+  });
 
   it('responds 204 with no body', async () => {
     const res = await callRemoveMember({ user: manager, params: { id: 'team-id', userId: 'user-id' } });
@@ -249,6 +249,3 @@ describe('removeTeamMemberHandler', () => {
     expect(removeTeamMemberMock).not.toHaveBeenCalled();
   });
 })
-
-
-

@@ -8,9 +8,9 @@ import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 
 // with only the database mocked
 vi.mock('../../../src/lib/prisma', () => ({
-  default: { 
-    user: { findUnique: vi.fn() }, 
-    team: { create: vi.fn(),  findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
+  default: {
+    user: { findUnique: vi.fn() },
+    team: { create: vi.fn(), findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), update: vi.fn(), delete: vi.fn() },
     teamMember: { upsert: vi.fn(), deleteMany: vi.fn() }
   },
 }));
@@ -20,10 +20,10 @@ const createTeamMock = prisma.team.create as unknown as Mock;
 const findTeamsMock = prisma.team.findMany as unknown as Mock;
 const findTeamMock = prisma.team.findUnique as unknown as Mock;
 const countTeamsMock = prisma.team.count as unknown as Mock;
-const updateTeamMock = prisma.team.update as unknown as Mock; 
-const deleteTeamMock = prisma.team.delete as unknown as Mock; 
-const upsertMemberMock = prisma.teamMember.upsert as unknown as Mock; 
-const deleteMembersMock = prisma.teamMember.deleteMany as unknown as Mock; 
+const updateTeamMock = prisma.team.update as unknown as Mock;
+const deleteTeamMock = prisma.team.delete as unknown as Mock;
+const upsertMemberMock = prisma.teamMember.upsert as unknown as Mock;
+const deleteMembersMock = prisma.teamMember.deleteMany as unknown as Mock;
 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
 // Zod expects a real UUID v4 for managerId
@@ -87,9 +87,9 @@ beforeEach(() => {
   createTeamMock.mockResolvedValue(dbTeam);
   findTeamsMock.mockResolvedValue([dbListTeam]);
   countTeamsMock.mockResolvedValue(1);
-  findTeamMock.mockResolvedValue(dbTeam); 
-  updateTeamMock.mockResolvedValue(dbTeam); 
-  deleteTeamMock.mockResolvedValue(dbTeam); 
+  findTeamMock.mockResolvedValue(dbTeam);
+  updateTeamMock.mockResolvedValue(dbTeam);
+  deleteTeamMock.mockResolvedValue(dbTeam);
 });
 
 afterEach(() => {
@@ -541,19 +541,18 @@ describe('DELETE /api/v1/teams/:id/members/:userId', () => {
   });
 
   it('answers 403 to an employee', async () => {
-  expect((await memberRequest('DELETE', 'employee')).status).toBe(403);
-  expect(deleteMembersMock).not.toHaveBeenCalled();
-});
+    expect((await memberRequest('DELETE', 'employee')).status).toBe(403);
+    expect(deleteMembersMock).not.toHaveBeenCalled();
+  });
 
-it('answers 403 to a manager who does not manage the team', async () => {
-  findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
-  expect((await memberRequest('DELETE', 'manager')).status).toBe(403);
-});
+  it('answers 403 to a manager who does not manage the team', async () => {
+    findTeamMock.mockResolvedValue({ ...dbTeam, managerId: 'someone-else' });
+    expect((await memberRequest('DELETE', 'manager')).status).toBe(403);
+  });
 
-it('removes the membership and answers 204 to the team manager', async () => {
-  const res = await memberRequest('DELETE', 'manager');
-  expect(res.status).toBe(204);
-  expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: TEAM_ID, userId: MEMBER_ID } });
-});
-
+  it('removes the membership and answers 204 to the team manager', async () => {
+    const res = await memberRequest('DELETE', 'manager');
+    expect(res.status).toBe(204);
+    expect(deleteMembersMock).toHaveBeenCalledWith({ where: { teamId: TEAM_ID, userId: MEMBER_ID } });
+  });
 });
