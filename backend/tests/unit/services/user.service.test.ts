@@ -262,6 +262,15 @@ describe('listUsers', () => {
     ]);
   });
 
+  it('escapes the LIKE wildcards of the search in every field', async () => {
+    await listUsers(admin, { ...query, search: '50%_' });
+    expect(lastWhere().OR).toEqual([
+      { firstName: { contains: '50\\%\\_', mode: 'insensitive' } },
+      { lastName: { contains: '50\\%\\_', mode: 'insensitive' } },
+      { email: { contains: '50\\%\\_', mode: 'insensitive' } },
+    ]);
+  });
+
   it('never searches the email for a manager: the results would reveal hidden emails', async () => {
     await listUsers(manager, { ...query, search: 'dur' });
     expect(lastWhere().OR).toEqual([

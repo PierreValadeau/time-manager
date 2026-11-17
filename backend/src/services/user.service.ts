@@ -4,7 +4,8 @@ import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
 import { isSelf, type Caller } from './scope.service';
 import type { CreateUserInput, ListUsersQuery } from '../schemas/user.schema';
-import { generateToken, hashToken } from '../lib/token'; 
+import { generateToken, hashToken } from '../lib/token';
+import { escapeLike } from '../lib/escapeLike';
 
 // Roles each caller may assign (contract, section 2); admin is never assignable
 const CREATABLE_ROLES: Record<UserRole, UserRole[]> = {
@@ -117,13 +118,14 @@ function userListWhere(actor: Caller, { search, role, teamId }: ListUsersQuery):
   }
 
   if (search) {
+    const pattern = escapeLike(search);
     const searchFields: Prisma.UserWhereInput[] = [
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { lastName: { contains: search, mode: 'insensitive' } },
+      { firstName: { contains: pattern, mode: 'insensitive' } },
+      { lastName: { contains: pattern, mode: 'insensitive' } },
     ];
 
     // Email is hidden from managers outside their teams: searching it would leak it
-    if (actor.role === 'admin') searchFields.push({ email: { contains: search, mode: 'insensitive' } });
+    if (actor.role === 'admin') searchFields.push({ email: { contains: pattern, mode: 'insensitive' } });
 
     where.OR = searchFields;
   }

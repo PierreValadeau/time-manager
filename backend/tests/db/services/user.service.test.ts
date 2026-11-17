@@ -77,6 +77,34 @@ describe('listUsers (PostgreSQL)', () => {
     expect(seen).toEqual([...ids].sort());
   });
 
+  describe('search with LIKE wildcards', () => {
+    const setup = async () => {
+      const jeanLuc = await prisma.user.create({
+        data: { firstName: 'Jean_Luc', lastName: 'Martin', email: 'jl@trinity.com' },
+      });
+      await prisma.user.create({ data: { firstName: 'Camille', lastName: 'Durand', email: 'camille@trinity.com' } });
+      return { jeanLuc };
+    };
+
+    it('matches _ literally, not as any character', async () => {
+      const { jeanLuc } = await setup();
+
+      const result = await listUsers(admin, { page: 1, limit: 20, search: '_' });
+
+      expect(result.data.map(user => user.id)).toEqual([jeanLuc.id]);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('matches % literally, so it finds nobody when no name contains it', async () => {
+      await setup();
+
+      const result = await listUsers(admin, { page: 1, limit: 20, search: '%' });
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+    });
+  });
+
   describe('search on email (data minimization)', () => {
     // Worst case: "x9q" only appears in the email, never in the names
     const setup = async () => {
