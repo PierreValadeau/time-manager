@@ -535,6 +535,17 @@ describe('DELETE /api/v1/teams/:id/members/:userId', () => {
     expect(deleteMembersMock).not.toHaveBeenCalled();
   });
 
+  it('answers 400 when userId is not a UUID, without deleting', async () => {
+    expect((await memberRequest('DELETE', 'manager', 'not-a-uuid')).status).toBe(400);
+    expect(deleteMembersMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 when the team does not exist, without deleting', async () => {
+    findTeamMock.mockResolvedValue(null);
+    expect((await memberRequest('DELETE', 'manager')).status).toBe(404);
+    expect(deleteMembersMock).not.toHaveBeenCalled();
+  });
+
   it('answers 204 and removes the membership of an anonymized user', async () => {
     findUserMock.mockResolvedValue({ id: MEMBER_ID, role: 'employee', deletedAt: new Date() });
     expect((await memberRequest('DELETE', 'manager')).status).toBe(204);
