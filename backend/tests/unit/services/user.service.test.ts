@@ -280,6 +280,15 @@ describe('listUsers', () => {
     expect(findUsersMock.mock.lastCall![0]).toMatchObject({ skip: 20, take: 10 });
   });
 
+  it('sorts by name, then by id so that namesakes keep the same order from one page to the next', async () => {
+    await listUsers(admin, query);
+    expect(findUsersMock.mock.lastCall![0].orderBy).toEqual([
+      { lastName: 'asc' },
+      { firstName: 'asc' },
+      { id: 'asc' },
+    ]);
+  });
+
   it('returns the full profile of everyone to the admin', async () => {
     findUsersMock.mockResolvedValue([listedUser('u1')]);
     const { data } = await listUsers(admin, query);

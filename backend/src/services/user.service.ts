@@ -148,7 +148,7 @@ export async function listUsers(actor: Caller, query: ListUsersQuery) {
     prisma.user.findMany({
       where, 
       select: userSelect, 
-      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }], 
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { id: 'asc' }], 
       skip, 
       take: limit,
     }),

@@ -58,6 +58,25 @@ describe('listUsers (PostgreSQL)', () => {
     expect(result.meta.total).toBe(1);
   });
 
+  it('returns each namesake exactly once when paging through them, ordered by id', async () => {
+    const ids: string[] = [];
+    for (const n of [1, 2, 3]) {
+      const user = await prisma.user.create({
+        data: { firstName: 'Camille', lastName: 'Durand', email: `camille${n}@trinity.com` },
+      });
+      ids.push(user.id);
+    }
+
+    const seen: string[] = [];
+    for (const page of [1, 2, 3]) {
+      const { data } = await listUsers(admin, { page, limit: 1 });
+      seen.push(...data.map(user => user.id));
+    }
+
+    // UUIDs are lowercase hex of the same shape: string order matches PostgreSQL's uuid order
+    expect(seen).toEqual([...ids].sort());
+  });
+
   describe('search on email (data minimization)', () => {
     // Worst case: "x9q" only appears in the email, never in the names
     const setup = async () => {
