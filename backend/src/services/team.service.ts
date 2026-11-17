@@ -45,7 +45,11 @@ const isTeamNameTaken = (err: unknown) => {
     const target = err.meta?.target; 
     const fields = Array.isArray(target) ? target : [target]; 
     return fields.some(field => String(field).includes('name')); 
-}; 
+};
+
+// P2025: the row to update or delete no longer exists
+const isRecordNotFound = (err: unknown) =>
+    err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
 
 //filter
 function teamListWhere(actor: Caller, search: string | undefined): Prisma.TeamWhereInput {
@@ -93,7 +97,7 @@ async function assertActiveManager(managerId: string): Promise<void> {
 async function assertCanManageTeam(actor: Caller, teamId: string): Promise<void> {
     const team = await prisma.team.findUnique({ where: { id: teamId }, select: { id: true }}); 
     if (!team) {
-        throw new AppError(404, 'NOT_FOUND', 'Équipe introuvable'); 
+        throw new AppError(404, 'NOT_FOUND', 'Équipe introuvable');
     }
 
     if (!(await isTeamManager(actor, teamId))) {
@@ -166,13 +170,26 @@ export async function updateTeam(actor: Caller, teamId: string, input: UpdateTea
     } catch (err) {
         if (isTeamNameTaken(err)) {
             throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déjà'); 
-        } 
+        }
+
+        if (isRecordNotFound(err)) {
+            throw new AppError(404, 'NOT_FOUND', 'Équipe introuvable');
+        }
+
         throw err; 
     }
 }
 
 //DELETE /teams/:id
 export async function deleteTeam(actor: Caller, teamId: string): Promise<void> {
-    await assertCanManageTeam(actor, teamId); 
-    await prisma.team.delete({ where: { id: teamId }}); 
+    await assertCanManageTeam(actor, teamId);
+    try {
+        await prisma.team.delete({ where: { id: teamId }});
+    } catch (err) {
+        if (isRecordNotFound(err)) {
+            throw new AppError(404, 'NOT_FOUND', 'Équipe introuvable');
+        }
+
+        throw err;
+    }
 }

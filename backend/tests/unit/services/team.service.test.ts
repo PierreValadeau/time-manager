@@ -35,6 +35,13 @@ const uniqueViolation = (column: string) =>
     meta: { target: [column] },
 });
 
+// Prisma error when the row to update or delete is gone (deleted by a concurrent request)
+const recordNotFound = () =>
+  new Prisma.PrismaClientKnownRequestError('Record to update or delete not found', {
+    code: 'P2025',
+    clientVersion: 'test',
+  });
+
 const dbTeam = {
     id: 'team-id', 
     name: 'Team A', 
@@ -268,6 +275,20 @@ describe('updateTeam', () => {
     await expect(updateTeam(manager, 'team-id', input)).rejects.toMatchObject({ status: 409 });
   });
 
+  it('answers 404 when the team is deleted between the check and the update', async () => {
+    updateTeamMock.mockRejectedValue(recordNotFound());
+    await expect(updateTeam(manager, 'team-id', input)).rejects.toMatchObject({
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+  });
+
+  it('rethrows any other database error unchanged', async () => {
+    const error = new Error('connection lost');
+    updateTeamMock.mockRejectedValue(error);
+    await expect(updateTeam(manager, 'team-id', input)).rejects.toBe(error);
+  });
+
   it('returns the updated team in the contract format', async () => {
     const team = await updateTeam(manager, 'team-id', input);
     expect(team).toMatchObject({ name: 'Team B', members: [] });
@@ -296,5 +317,19 @@ describe('deleteTeam', () => {
     isTeamManagerMock.mockResolvedValue(false);
     await expect(deleteTeam(manager, 'team-id')).rejects.toMatchObject({ status: 403 });
     expect(deleteTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 404 when the team is deleted between the check and the delete', async () => {
+    deleteTeamMock.mockRejectedValue(recordNotFound());
+    await expect(deleteTeam(manager, 'team-id')).rejects.toMatchObject({
+      status: 404,
+      code: 'NOT_FOUND',
+    });
+  });
+
+  it('rethrows any other database error unchanged', async () => {
+    const error = new Error('connection lost');
+    deleteTeamMock.mockRejectedValue(error);
+    await expect(deleteTeam(manager, 'team-id')).rejects.toBe(error);
   });
 });
