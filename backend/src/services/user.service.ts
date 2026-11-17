@@ -104,27 +104,31 @@ export async function createUser(actor: Caller, input: CreateUserInput) {
   return actor.role === 'admin' ? toFullUser(user) : toReducedUser(user);
 }
 
-//GET /users filters
-function userListWhere({ search, role, teamId }: ListUsersQuery): Prisma.UserWhereInput {
-  const where: Prisma.UserWhereInput = { deletedAt: null }; 
+// GET /users filters
+function userListWhere(actor: Caller, { search, role, teamId }: ListUsersQuery): Prisma.UserWhereInput {
+  const where: Prisma.UserWhereInput = { deletedAt: null };
 
   if (role) {
-    where.role = role; 
+    where.role = role;
   }
 
   if (teamId) {
-    where.memberships = { some: { teamId }}; 
+    where.memberships = { some: { teamId } };
   }
 
   if (search) {
-    where.OR = [
-      { firstName: { contains: search, mode: 'insensitive' } }, 
-      { lastName: { contains: search, mode: 'insensitive' } }, 
-      { email: { contains: search, mode: 'insensitive' } },
-    ]; 
+    const searchFields: Prisma.UserWhereInput[] = [
+      { firstName: { contains: search, mode: 'insensitive' } },
+      { lastName: { contains: search, mode: 'insensitive' } },
+    ];
+
+    // Email is hidden from managers outside their teams: searching it would leak it
+    if (actor.role === 'admin') searchFields.push({ email: { contains: search, mode: 'insensitive' } });
+
+    where.OR = searchFields;
   }
 
-  return where; 
+  return where;
 }
 
 //Teams managerd by the Caller
@@ -137,7 +141,7 @@ async function managedTeamIds(actor: Caller): Promise<Set<string>> {
 //GET /users 
 export async function listUsers(actor: Caller, query: ListUsersQuery) {
   const { page, limit } = query; 
-  const where = userListWhere(query); 
+  const where = userListWhere(actor, query); 
   const skip = (page - 1) * limit; 
 
   const [rows, total, teamIds] = await Promise.all([

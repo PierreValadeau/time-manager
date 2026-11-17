@@ -253,12 +253,20 @@ describe('listUsers', () => {
     expect(lastWhere()).toMatchObject({ role: 'manager', memberships: { some: { teamId: 'team-id' } } });
   });
 
-  it('searches first name, last name and email, case-insensitive', async () => {
+  it('searches first name, last name and email for the admin, case-insensitive', async () => {
     await listUsers(admin, { ...query, search: 'dur' });
     expect(lastWhere().OR).toEqual([
       { firstName: { contains: 'dur', mode: 'insensitive' } },
       { lastName: { contains: 'dur', mode: 'insensitive' } },
       { email: { contains: 'dur', mode: 'insensitive' } },
+    ]);
+  });
+
+  it('never searches the email for a manager: the results would reveal hidden emails', async () => {
+    await listUsers(manager, { ...query, search: 'dur' });
+    expect(lastWhere().OR).toEqual([
+      { firstName: { contains: 'dur', mode: 'insensitive' } },
+      { lastName: { contains: 'dur', mode: 'insensitive' } },
     ]);
   });
 

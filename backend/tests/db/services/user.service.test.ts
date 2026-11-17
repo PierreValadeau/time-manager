@@ -57,5 +57,43 @@ describe('listUsers (PostgreSQL)', () => {
     expect(result.data.map(user => user.id)).toEqual([camille.id]);
     expect(result.meta.total).toBe(1);
   });
+
+  describe('search on email (data minimization)', () => {
+    // Worst case: "x9q" only appears in the email, never in the names
+    const setup = async () => {
+      const nadia = await prisma.user.create({
+        data: { firstName: 'Nadia', lastName: 'Benali', email: 'nadia@trinity.com', role: 'manager' },
+      });
+      const outsider = await prisma.user.create({
+        data: { firstName: 'Camille', lastName: 'Durand', email: 'x9q.camille@trinity.com' },
+      });
+      return { manager: { id: nadia.id, role: 'manager' as const }, outsider };
+    };
+
+    it('never lets a manager find someone outside their teams by a fragment of their email', async () => {
+      const { manager } = await setup();
+
+      const result = await listUsers(manager, { page: 1, limit: 20, search: 'x9q' });
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+    });
+
+    it('lets the admin find the same user by a fragment of their email', async () => {
+      const { outsider } = await setup();
+
+      const result = await listUsers(admin, { page: 1, limit: 20, search: 'x9q' });
+
+      expect(result.data.map(user => user.id)).toEqual([outsider.id]);
+    });
+
+    it('still lets a manager find someone outside their teams by name, with the reduced profile', async () => {
+      const { manager, outsider } = await setup();
+
+      const result = await listUsers(manager, { page: 1, limit: 20, search: 'durand' });
+
+      expect(result.data).toEqual([{ id: outsider.id, firstName: 'Camille', lastName: 'Durand', role: 'employee' }]);
+    });
+  });
 });
 
