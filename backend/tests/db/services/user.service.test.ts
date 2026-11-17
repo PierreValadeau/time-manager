@@ -219,5 +219,21 @@ describe('updateUser (PostgreSQL)', () => {
     });
     expect((await stored(paul.id)).lastName).toBe('Dupont');
   });
+
+  it("never lets a manager change the email of an admin who is a member of their team", async () => {
+    const nadia = await prisma.user.create({ data: { ...body('nadia@trinity.com'), role: 'manager' } });
+    const root = await prisma.user.create({ data: { ...body('root@trinity.com'), role: 'admin' } });
+    // Created directly: the membership routes are not on this branch
+    await prisma.team.create({
+      data: { name: 'Support N1', managerId: nadia.id, members: { create: { userId: root.id } } },
+    });
+    const caller = { id: nadia.id, role: 'manager' as const };
+
+    // Account takeover attempt: a new email, then "forgot password" on it
+    await expect(updateUser(caller, root.id, body('nadia.perso@trinity.com'))).rejects.toMatchObject({
+      status: 403,
+    });
+    expect((await stored(root.id)).email).toBe('root@trinity.com');
+  });
 });
 

@@ -514,9 +514,16 @@ describe('updateUser', () => {
       expect(findMembershipMock).not.toHaveBeenCalled();
     });
 
-    it('forbids a manager to edit the admin account', async () => {
-      await expectForbidden(updateUser(manager, 'admin-id', input));
-    });
+    it.each(['admin-id', 'other-admin-id'])(
+      'forbids a manager to edit an admin account (%s), even one who is a member of their team',
+      async targetId => {
+        // Worst case: the membership check alone would let the manager through
+        findMembershipMock.mockResolvedValue({ teamId: 'my-team' });
+
+        await expectForbidden(updateUser(manager, targetId, input));
+        expect(findMembershipMock).not.toHaveBeenCalled();
+      },
+    );
 
     it('lets a manager edit their own account, without looking up teams', async () => {
       await updateUser(manager, 'me', input);

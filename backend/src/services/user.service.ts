@@ -204,7 +204,8 @@ export async function updateUser(actor: Caller, id: string, input: UpdateUserInp
   if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
 
   if (!self && actor.role !== 'admin') {
-    if (user.role === 'manager') throw forbidden();
+    // A manager only edits employee: whitelist, so any other role is refused by default
+    if (user.role !== 'employee') throw forbidden();
     if (!(await isManagerOfEmployee(actor, userId))) throw forbidden();
   }
 
