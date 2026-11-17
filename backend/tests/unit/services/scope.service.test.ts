@@ -4,18 +4,20 @@ import {
   isSelf,
   isTeamManager,
   isManagerOfEmployee,
+  managedTeamIds,
   type Caller,
 } from '../../../src/services/scope.service';
 
 // No database: Prisma is replaced by mocks
 vi.mock('../../../src/lib/prisma', () => ({
   default: {
-    team: { findUnique: vi.fn() },
+    team: { findUnique: vi.fn(), findMany: vi.fn() },
     teamMember: { findFirst: vi.fn() },
   },
 }));
 
 const findTeamMock = prisma.team.findUnique as unknown as Mock;
+const findTeamsMock = prisma.team.findMany as unknown as Mock;
 const findMembershipMock = prisma.teamMember.findFirst as unknown as Mock;
 
 // Bob manages the "Caisse" team, Alice manages "Logistique"
@@ -105,6 +107,33 @@ describe('isManagerOfEmployee', () => {
   it('lets the admin through for any user', async () => {
     expect(await isManagerOfEmployee(admin, 'anyone-id')).toBe(true);
     expect(findMembershipMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('managedTeamIds', () => {
+  it('returns the ids of every team the manager manages, in one query', async () => {
+    findTeamsMock.mockResolvedValue([{ id: CAISSE }, { id: LOGISTIQUE }]);
+
+    expect(await managedTeamIds(bob)).toEqual(new Set([CAISSE, LOGISTIQUE]));
+    expect(findTeamsMock).toHaveBeenCalledTimes(1);
+    expect(findTeamsMock).toHaveBeenCalledWith({ where: { managerId: bob.id }, select: { id: true } });
+  });
+
+  it('returns an empty set for a manager without a team', async () => {
+    findTeamsMock.mockResolvedValue([]);
+    expect(await managedTeamIds(alice)).toEqual(new Set());
+  });
+
+  // Unlike the other helpers, the admin gets nothing here: callers must check the admin first
+  it.each([
+    ['the admin', admin],
+    ['an employee', employee],
+    ['a demoted manager', { id: bob.id, role: 'employee' } as Caller],
+  ])('returns an empty set for %s, without querying the database', async (_label, caller) => {
+    findTeamsMock.mockResolvedValue([{ id: CAISSE }]);
+
+    expect(await managedTeamIds(caller)).toEqual(new Set());
+    expect(findTeamsMock).not.toHaveBeenCalled();
   });
 });
 

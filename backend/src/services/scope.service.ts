@@ -31,3 +31,11 @@ export async function isManagerOfEmployee(caller: Caller, userId: string) {
   });
   return membership !== null;
 }
+
+// Teams managed by the caller: one query for the whole page
+// Admin and employee receive a empty set
+export async function managedTeamIds(actor: Caller): Promise<Set<string>> {
+  if (actor.role !== 'manager') return new Set();
+  const teams = await prisma.team.findMany({ where: { managerId: actor.id }, select: { id: true } });
+  return new Set(teams.map(team => team.id));
+}

@@ -2,7 +2,7 @@ import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
-import { isSelf, type Caller } from './scope.service';
+import { isSelf, managedTeamIds, type Caller } from './scope.service';
 import type { CreateUserInput, ListUsersQuery } from '../schemas/user.schema';
 import { generateToken, hashToken } from '../lib/token';
 import { escapeLike } from '../lib/escapeLike';
@@ -131,13 +131,6 @@ function userListWhere(actor: Caller, { search, role, teamId }: ListUsersQuery):
   }
 
   return where;
-}
-
-// Teams managed by the caller: one query for the whole page
-async function managedTeamIds(actor: Caller): Promise<Set<string>> {
-  if (actor.role !== 'manager') return new Set();
-  const teams = await prisma.team.findMany({ where: { managerId: actor.id }, select: { id: true } });
-  return new Set(teams.map(team => team.id));
 }
 
 // GET /users
