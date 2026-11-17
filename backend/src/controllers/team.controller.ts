@@ -13,18 +13,18 @@ export const createTeamHandler: RequestHandler = async (req, res) => {
   res.status(201).json(team);
 };
 
-//GET /teams
+// GET /teams
 export const listTeamsHandler: RequestHandler = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
   }
 
-  //parsed by validate() with ListTeamsQuerySchema -> clock.controller.ts:62 
+  // Parsed by validate() with listTeamsQuerySchema: Express cannot type that itself 
   const query = req.query as unknown as ListTeamsQuery; 
   res.json(await listTeams(req.user, query)); 
 }; 
 
-//GET /teams/:id
+// GET /teams/:id
 export const getTeamHandler: RequestHandler<{ id: string }> = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
@@ -33,7 +33,7 @@ export const getTeamHandler: RequestHandler<{ id: string }> = async (req, res) =
   res.json(await getTeam(req.user, req.params.id)); 
 }; 
 
-//PUT /teams/:id
+// PUT /teams/:id
 export const updateTeamHandler: RequestHandler<{ id: string }> = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 
@@ -41,7 +41,7 @@ export const updateTeamHandler: RequestHandler<{ id: string }> = async (req, res
   res.json(await updateTeam(req.user, req.params.id, req.body)); 
 }
 
-//DELETE /teams/:id
+// DELETE /teams/:id
 export const deleteTeamHandler: RequestHandler<{ id: string }> = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise'); 

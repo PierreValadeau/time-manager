@@ -4,7 +4,7 @@ import AppError from '../errors/AppError';
 import { isTeamManager, Caller } from './scope.service';
 import type { CreateTeamInput, ListTeamsQuery, UpdateTeamInput } from '../schemas/team.schema';
 
-//Contract section 5
+// Team object (contract, section 5)
 export const teamSelect = {
     id: true, 
     name: true, 
@@ -15,7 +15,7 @@ export const teamSelect = {
     members: { select: { user: { select : { id: true, firstName: true, lastName: true }}}}, 
 } satisfies Prisma.TeamSelect; 
 
-//List item contrat section 5 -> memberCount instead of members
+// List item (contract, section 5): memberCount instead of members
 export const teamListSelect = {
     id: true, 
     name: true, 
@@ -39,7 +39,7 @@ export const toTeamListItem = ({ _count, ...team }: TeamListRecord) => ({
     memberCount: _count.members,
 }); 
 
-//P2002 on the team name
+// P2002 on the team name
 const isTeamNameTaken = (err: unknown) => {
     if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false; 
     const target = err.meta?.target; 
@@ -51,7 +51,6 @@ const isTeamNameTaken = (err: unknown) => {
 const isRecordNotFound = (err: unknown) =>
     err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
 
-//filter
 function teamListWhere(actor: Caller, search: string | undefined): Prisma.TeamWhereInput {
     const where: Prisma.TeamWhereInput = {}; 
 
@@ -66,7 +65,7 @@ function teamListWhere(actor: Caller, search: string | undefined): Prisma.TeamWh
     return where; 
 }
 
-//verify if it's a manager -> contract: managerId defaults to the creator for a manager
+// The admin must name the manager; a manager defaults to themselves
 function resolveManagerId(actor: Caller, managerId: string | undefined) {
     if (actor.role === 'admin') {
         if (!managerId) {
@@ -123,7 +122,7 @@ export async function createTeam(actor: Caller, input: CreateTeamInput) {
     }
 }
 
-//paginated sorted by name
+// GET /teams: paginated, sorted by name
 export async function listTeams(actor: Caller, { page, limit, search }: ListTeamsQuery) {
     const where = teamListWhere(actor, search); 
     const skip = (page - 1) * limit; 
@@ -180,7 +179,7 @@ export async function updateTeam(actor: Caller, teamId: string, input: UpdateTea
     }
 }
 
-//DELETE /teams/:id
+// DELETE /teams/:id
 export async function deleteTeam(actor: Caller, teamId: string): Promise<void> {
     await assertCanManageTeam(actor, teamId);
     try {

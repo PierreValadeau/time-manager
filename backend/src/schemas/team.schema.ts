@@ -7,7 +7,6 @@ export const createTeamSchema = z.object({
     managerId: z.uuidv4().optional(),
 }); 
 
-//GET /api/v1/teams?pages=2&limit=10&search=support
 export const listTeamsQuerySchema = paginationSchema
     .extend({
         search: z.string().trim().min(1).max(100).optional(),
