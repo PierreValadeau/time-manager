@@ -13,12 +13,13 @@ export const createUserHandler: RequestHandler = async (req, res) => {
   res.status(201).json(user);
 };
 
-//GET /users
+// GET /users
 export const listUsersHandler: RequestHandler = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
   }
 
-  const query = req.query as unknown as ListUsersQuery; 
+  // Parsed by validate() with listUsersQuerySchema: Express cannot type that itself
+  const query = req.query as unknown as ListUsersQuery;
   res.json(await listUsers(req.user, query));
 };

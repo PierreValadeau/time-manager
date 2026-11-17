@@ -11,12 +11,12 @@ export const createUserSchema = z.object({
   role: z.enum(['employee', 'manager']).default('employee'),
 });
 
-// GET /users...
+// GET /users query: pagination, search, role and team filters
 export const listUsersQuerySchema = paginationSchema.extend({
-  search: z.string().trim().min(1).max(100).optional(), 
-  role: z.enum(['employee', 'manager', 'admin']).optional(), 
+  search: z.string().trim().min(1).max(100).optional(),
+  role: z.enum(['employee', 'manager', 'admin']).optional(),
   teamId: z.uuidv4().optional(),
-}); 
+});
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
-export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>; 
+export type ListUsersQuery = z.infer<typeof listUsersQuerySchema>;

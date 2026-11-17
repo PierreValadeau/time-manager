@@ -18,11 +18,11 @@ router.post(
 
 // Contract, section 4: managers and the admin; employees get 403 before the query is read
 router.get(
-  '/', 
-  authenticate, 
-  requireRole('manager', 'admin'), 
-  validate({ query: listUsersQuerySchema }), 
+  '/',
+  authenticate,
+  requireRole('manager', 'admin'),
+  validate({ query: listUsersQuerySchema }),
   listUsersHandler,
-); 
+);
 
 export default router;

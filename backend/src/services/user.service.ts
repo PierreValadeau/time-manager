@@ -133,39 +133,39 @@ function userListWhere(actor: Caller, { search, role, teamId }: ListUsersQuery):
   return where;
 }
 
-//Teams managerd by the Caller
+// Teams managed by the caller: one query for the whole page
 async function managedTeamIds(actor: Caller): Promise<Set<string>> {
-  if (actor.role !== 'manager') return new Set(); 
-  const teams = await prisma.team.findMany({ where: { managerId: actor.id }, select: { id: true } }); 
-  return new Set(teams.map(team => team.id)); 
+  if (actor.role !== 'manager') return new Set();
+  const teams = await prisma.team.findMany({ where: { managerId: actor.id }, select: { id: true } });
+  return new Set(teams.map(team => team.id));
 }
 
-//GET /users 
+// GET /users
 export async function listUsers(actor: Caller, query: ListUsersQuery) {
-  const { page, limit } = query; 
-  const where = userListWhere(actor, query); 
-  const skip = (page - 1) * limit; 
+  const { page, limit } = query;
+  const where = userListWhere(actor, query);
+  const skip = (page - 1) * limit;
 
   const [rows, total, teamIds] = await Promise.all([
     prisma.user.findMany({
-      where, 
-      select: userSelect, 
-      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { id: 'asc' }], 
-      skip, 
+      where,
+      select: userSelect,
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { id: 'asc' }],
+      skip,
       take: limit,
     }),
-    prisma.user.count({ where }), 
+    prisma.user.count({ where }),
     managedTeamIds(actor),
-  ]); 
+  ]);
 
-  //full profile for the admin only
-  const isInScope = (user: UserRecord) => 
+  // Full profile for the admin, self and members of the caller's teams (KAN-21)
+  const isInScope = (user: UserRecord) =>
     actor.role === 'admin' ||
     isSelf(actor, user.id) ||
-    user.memberships.some(memberShip => teamIds.has(memberShip.team.id)); 
+    user.memberships.some(membership => teamIds.has(membership.team.id));
 
-    return {
-      data: rows.map(user => (isInScope(user) ? toFullUser(user) : toReducedUser(user))), 
-      meta: { page, limit, total }
-    }
+  return {
+    data: rows.map(user => (isInScope(user) ? toFullUser(user) : toReducedUser(user))),
+    meta: { page, limit, total },
+  };
 }
