@@ -39,18 +39,19 @@ export const updateTeamHandler: RequestHandler<{ id: string }> = async (req, res
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
   }
   res.json(await updateTeam(req.user, req.params.id, req.body));
-}
+};
 
 // DELETE /teams/:id
 export const deleteTeamHandler: RequestHandler<{ id: string }> = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
   }
+  
   await deleteTeam(req.user, req.params.id);
   res.sendStatus(204);
-}
+};
 
-//PUT /teams/:id/members/:userId
+// PUT /teams/:id/members/:userId
 export const addTeamMemberHandler: RequestHandler<{ id: string, userId: string }> = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
@@ -58,9 +59,9 @@ export const addTeamMemberHandler: RequestHandler<{ id: string, userId: string }
 
   await addTeamMember(req.user, req.params.id, req.params.userId);
   res.sendStatus(204);
-}
+};
 
-//DELETE /teams/:id/members/:userId
+// DELETE /teams/:id/members/:userId
 export const removeTeamMemberHandler: RequestHandler<{ id: string, userId: string }> = async (req, res) => {
   if (!req.user) {
     throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
@@ -68,4 +69,4 @@ export const removeTeamMemberHandler: RequestHandler<{ id: string, userId: strin
 
   await removeTeamMember(req.user, req.params.id, req.params.userId);
   res.sendStatus(204);
-}
+};

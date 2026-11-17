@@ -5,10 +5,10 @@ import { isTeamManager, Caller } from './scope.service';
 import type { CreateTeamInput, ListTeamsQuery, UpdateTeamInput } from '../schemas/team.schema';
 import { escapeLike } from '../lib/escapeLike';
 
-
 // User roles that can be added to a team
 const TEAM_MEMBER_ROLES: UserRole[] = ['employee', 'manager'];
 
+// Team object (contract, section 5)
 export const teamSelect = {
   id: true,
   name: true,
@@ -104,7 +104,7 @@ async function assertActiveManager(managerId: string): Promise<void> {
 async function assertActiveUser(userId: string): Promise<{ role: UserRole }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true, deletedAt: true }
+    select: { role: true, deletedAt: true },
   });
 
   if (!user || user.deletedAt) {
@@ -116,10 +116,10 @@ async function assertActiveUser(userId: string): Promise<{ role: UserRole }> {
 
 // Any row, anonymized included, so its memberships can still be cleaned up
 async function assertUserExists(userId: string): Promise<void> {
-    const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { id: true }
-    });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true },
+  });
 
   if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
 }
@@ -147,7 +147,7 @@ export async function createTeam(actor: Caller, input: CreateTeamInput) {
     return toTeam(team);
   } catch (err) {
     if (isTeamNameTaken(err)) {
-      throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déjà')
+      throw new AppError(409, 'CONFLICT', 'Une équipe avec ce nom existe déjà');
     }
     throw err;
   }
@@ -224,7 +224,7 @@ export async function deleteTeam(actor: Caller, teamId: string): Promise<void> {
   }
 }
 
-//add a member to a team PUT /teams/:id/members/:userId, idempotent
+// PUT /teams/:id/members/:userId: idempotent
 export async function addTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> {
   await assertCanManageTeam(actor, teamId);
   const user = await assertActiveUser(userId);
@@ -243,7 +243,7 @@ export async function addTeamMember(actor: Caller, teamId: string, userId: strin
   });
 }
 
-//remove a member, DELETE /teams//:id/members/:userId -> the user account itself is untouched
+// DELETE /teams/:id/members/:userId: the user account itself is untouched
 export async function removeTeamMember(actor: Caller, teamId: string, userId: string): Promise<void> {
   await assertCanManageTeam(actor, teamId);
   await assertUserExists(userId);
