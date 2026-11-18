@@ -1,0 +1,7 @@
+[
+  {
+    "id": "GHSA-fc5q-39xc-vjpf",
+    "statement": "picomatch ReDoS, dev tooling only (vitest, vite, eslint), no patched version (<= 4.0.7 is the latest)",
+    "expires": "2026-12-31"
+  }
+]
