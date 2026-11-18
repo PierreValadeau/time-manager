@@ -200,6 +200,12 @@ describe('POST /api/v1/teams: creation', () => {
     expect(createTeamMock.mock.lastCall![0].data.name).toBe('Team A');
   });
 
+  it('accepts description null, as PUT does (201)', async () => {
+    const res = await postTeam('manager', { name: 'Team A', description: null });
+    expect(res.status).toBe(201);
+    expect(createTeamMock.mock.lastCall![0].data.description).toBeNull();
+  });
+
   it('answers 409 when the name is already taken', async () => {
     createTeamMock.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
@@ -274,6 +280,12 @@ describe('GET /api/v1/teams: query', () => {
   it('searches the name, trimmed and case-insensitive', async () => {
     await getTeams('admin', '?search=%20sup%20');
     expect(findManyArgs().where).toEqual({ name: { contains: 'sup', mode: 'insensitive' } });
+  });
+
+  it('escapes % and _ in search, so they are matched literally', async () => {
+    // %25 is the URL encoding of %
+    await getTeams('admin', '?search=50%25_');
+    expect(findManyArgs().where).toEqual({ name: { contains: '50\\%\\_', mode: 'insensitive' } });
   });
 
   it('answers 400 above the maximum limit of 100', async () => {

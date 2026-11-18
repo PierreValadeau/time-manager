@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { isTeamManager, Caller } from './scope.service';
 import type { CreateTeamInput, ListTeamsQuery, UpdateTeamInput } from '../schemas/team.schema';
+import { escapeLike } from '../lib/escapeLike';
 
 // Team object (contract, section 5)
 export const teamSelect = {
@@ -12,7 +13,10 @@ export const teamSelect = {
     createdAt: true, 
     updatedAt: true, 
     manager: { select: { id: true, firstName: true, lastName: true } }, 
-    members: { select: { user: { select : { id: true, firstName: true, lastName: true }}}}, 
+    members: {
+        select: { user: { select : { id: true, firstName: true, lastName: true } } },
+        orderBy: [{ user: { lastName: 'asc' } }, { user: { firstName: 'asc' } }, { userId: 'asc' }],
+    },
 } satisfies Prisma.TeamSelect; 
 
 // List item (contract, section 5): memberCount instead of members
@@ -59,7 +63,7 @@ function teamListWhere(actor: Caller, search: string | undefined): Prisma.TeamWh
     }
 
     if (search) {
-        where.name = { contains: search, mode: 'insensitive' }; 
+        where.name = { contains: escapeLike(search), mode: 'insensitive' };
     }
 
     return where; 

@@ -132,6 +132,11 @@ describe('createTeam: managerId', () => {
     expect(team.members).toEqual([{ id: 'u1', firstName: 'Camille', lastName: 'Durand' }]);
     });
 
+    it('passes description null to the database, as PUT does', async () => {
+        await createTeam(manager, { name: 'Team A', description: null });
+        expect(createTeamMock.mock.lastCall![0].data.description).toBeNull();
+    });
+
 }); 
 
 describe('listTeams', () => {
@@ -170,6 +175,11 @@ describe('listTeams', () => {
     });
   });
 
+  it('matches %, _ and \\ literally in search', async () => {
+    await listTeams(admin, { page: 1, limit: 20, search: '50%_a\\b' });
+    expect(listWhere().name).toEqual({ contains: '50\\%\\_a\\\\b', mode: 'insensitive' });
+  });
+
   it('counts with the same filter as the page', async () => {
     await listTeams(employee, { page: 1, limit: 20, search: 'sup' });
     expect(countMock.mock.lastCall![0].where).toEqual(listWhere());
@@ -202,6 +212,15 @@ describe('getTeam', () => {
   it('looks the team up by its id with the full select', async () => {
     await getTeam(admin, 'team-id');
     expect(findTeamMock.mock.lastCall![0].where).toEqual({ id: 'team-id' });
+  });
+
+  it('sorts the members by last name, first name, then id (stable order)', async () => {
+    await getTeam(admin, 'team-id');
+    expect(findTeamMock.mock.lastCall![0].select.members.orderBy).toEqual([
+      { user: { lastName: 'asc' } },
+      { user: { firstName: 'asc' } },
+      { userId: 'asc' },
+    ]);
   });
 
   it('answers 404 when the team does not exist, whatever the role', async () => {
