@@ -331,12 +331,44 @@ describe('GET and PUT /api/v1/users/:id', () => {
       );
     });
 
-    it('refuses the admin role with a 400, before any lookup', async () => {
+    it('lets the admin send back their own profile with role admin', async () => {
+      findUserMock.mockResolvedValueOnce({ ...storedUser('admin-id'), role: 'admin' });
+      const res = await putUser('admin', 'me', { ...payload, role: 'admin' });
+
+      expect(res.status).toBe(200);
+      expect(updateMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers 400 when the admin promotes an employee to admin, without writing', async () => {
       const res = await putUser('admin', OTHER_ID, { ...payload, role: 'admin' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.details).toEqual([expect.objectContaining({ field: 'role' })]);
-      expect(findUserMock).not.toHaveBeenCalled();
+      expect(res.body.error).toMatchObject({
+        code: 'VALIDATION_ERROR',
+        details: [{ field: 'role', issue: 'invalid' }],
+      });
+      expect(updateMock).not.toHaveBeenCalled();
+    });
+
+    it('answers 403 to a manager sending role admin for a member, without writing', async () => {
+      findMembershipMock.mockResolvedValue({ teamId: 'my-team' });
+      const res = await putUser('manager', OTHER_ID, { ...payload, role: 'admin' });
+
+      expect(res.status).toBe(403);
+      expect(updateMock).not.toHaveBeenCalled();
+    });
+
+    it('answers 404 when the account is anonymized between the lookup and the update', async () => {
+      updateMock.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record to update not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+      const res = await putUser('admin', OTHER_ID, payload);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('NOT_FOUND');
     });
 
     it('refuses an empty phone number (null clears it)', async () => {

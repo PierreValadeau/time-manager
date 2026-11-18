@@ -579,6 +579,28 @@ describe('updateUser', () => {
       await updateUser(admin, 'me', input);
       expect(updatedId()).toBe('admin-id');
     });
+
+    it('lets the admin send back their own profile with role admin, unchanged', async () => {
+      await updateUser(admin, 'me', { ...input, role: 'admin' });
+      expect(writtenData().role).toBe('admin');
+    });
+
+    it.each(['member-id', 'other-manager-id'])(
+      'refuses to promote %s to admin with a 400 on role, without writing',
+      async targetId => {
+        await expect(updateUser(admin, targetId, { ...input, role: 'admin' })).rejects.toMatchObject({
+          status: 400,
+          code: 'VALIDATION_ERROR',
+          details: [{ field: 'role', issue: 'invalid' }],
+        });
+        expect(updateMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it('answers 403, not 400, to a manager sending role admin: the right is checked first', async () => {
+      findMembershipMock.mockResolvedValue({ teamId: 'my-team' });
+      await expectForbidden(updateUser(manager, 'member-id', { ...input, role: 'admin' }));
+    });
   });
 
   describe('persistence', () => {
@@ -595,6 +617,24 @@ describe('updateUser', () => {
     it('reads the updated row through userSelect', async () => {
       await updateUser(admin, 'member-id', input);
       expect(updateMock.mock.lastCall![0].select).toBe(userSelect);
+    });
+
+    it('repeats deletedAt: null in the update, so an account anonymized since the lookup is not rewritten', async () => {
+      await updateUser(admin, 'member-id', input);
+      expect(updateMock.mock.lastCall![0].where).toEqual({ id: 'member-id', deletedAt: null });
+    });
+
+    it('answers 404 when the account was anonymized between the lookup and the update (P2025)', async () => {
+      updateMock.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record to update not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+      await expect(updateUser(admin, 'member-id', input)).rejects.toMatchObject({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
     });
 
     it('returns the full profile in the contract format', async () => {

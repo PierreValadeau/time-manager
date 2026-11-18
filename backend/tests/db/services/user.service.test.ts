@@ -235,5 +235,35 @@ describe('updateUser (PostgreSQL)', () => {
     });
     expect((await stored(root.id)).email).toBe('root@trinity.com');
   });
+
+  it('lets the admin send back their own profile with role admin', async () => {
+    const root = await prisma.user.create({ data: { ...body('root@trinity.com'), role: 'admin' } });
+    const caller = { id: root.id, role: 'admin' as const };
+
+    await updateUser(caller, 'me', { ...body('root@trinity.com'), phoneNumber: '+33612345678', role: 'admin' });
+
+    expect(await stored(root.id)).toMatchObject({ role: 'admin', phoneNumber: '+33612345678' });
+  });
+
+  it('never lets the admin promote an employee to admin', async () => {
+    const jean = await prisma.user.create({ data: body('jean@trinity.com') });
+
+    await expect(updateUser(admin, jean.id, { ...body('jean@trinity.com'), role: 'admin' })).rejects.toMatchObject({
+      status: 400,
+    });
+    expect((await stored(jean.id)).role).toBe('employee');
+  });
+
+  it('never rewrites an account anonymized between the lookup and the update (404)', async () => {
+    const gone = await prisma.user.create({
+      data: { firstName: 'Utilisateur', lastName: 'supprimé', email: 'deleted-1@trinity.invalid', deletedAt: new Date() },
+    });
+    // The lookup ran before the anonymization: it still saw an active employee
+    const lookup = vi.spyOn(prisma.user, 'findUnique').mockResolvedValueOnce({ role: 'employee' } as never);
+
+    await expect(updateUser(admin, gone.id, body('jean@trinity.com'))).rejects.toMatchObject({ status: 404 });
+    expect(await stored(gone.id)).toMatchObject({ lastName: 'supprimé', email: 'deleted-1@trinity.invalid' });
+    lookup.mockRestore();
+  });
 });
 

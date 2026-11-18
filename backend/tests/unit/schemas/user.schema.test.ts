@@ -63,7 +63,8 @@ describe('updateUserSchema', () => {
     expect(updateUserSchema.parse(valid)).not.toHaveProperty('role');
   });
 
-  it.each(['employee', 'manager'])('accepts role %s', role => {
+  // admin included: the admin must be able to send back their own profile; the service refuses a change to admin
+  it.each(['employee', 'manager', 'admin'])('accepts role %s', role => {
     expect(updateUserSchema.parse({ ...valid, role }).role).toBe(role);
   });
 
@@ -97,7 +98,6 @@ describe('updateUserSchema', () => {
   });
 
   it.each([
-    ['the admin role', { role: 'admin' }, 'role'],
     ['an unknown role', { role: 'superuser' }, 'role'],
     ['a non-E.164 phone number', { phoneNumber: '06 12 34 56 78' }, 'phoneNumber'],
     ['an empty phone number (null clears it)', { phoneNumber: '' }, 'phoneNumber'],
