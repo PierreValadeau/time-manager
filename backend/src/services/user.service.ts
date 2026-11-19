@@ -2,9 +2,10 @@ import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
-import type { Caller } from './scope.service';
-import type { CreateUserInput } from '../schemas/user.schema';
-import { generateToken, hashToken } from '../lib/token'; 
+import { isSelf, managedTeamIds, type Caller } from './scope.service';
+import type { CreateUserInput, ListUsersQuery } from '../schemas/user.schema';
+import { generateToken, hashToken } from '../lib/token';
+import { escapeLike } from '../lib/escapeLike';
 
 // Roles each caller may assign (contract, section 2); admin is never assignable
 const CREATABLE_ROLES: Record<UserRole, UserRole[]> = {
@@ -102,4 +103,62 @@ export async function createUser(actor: Caller, input: CreateUserInput) {
 
   // A new user belongs to no team yet, so a manager only gets the reduced profile
   return actor.role === 'admin' ? toFullUser(user) : toReducedUser(user);
+}
+
+// GET /users filters
+function userListWhere(actor: Caller, { search, role, teamId }: ListUsersQuery): Prisma.UserWhereInput {
+  const where: Prisma.UserWhereInput = { deletedAt: null };
+
+  if (role) {
+    where.role = role;
+  }
+
+  if (teamId) {
+    where.memberships = { some: { teamId } };
+  }
+
+  if (search) {
+    const pattern = escapeLike(search);
+    const searchFields: Prisma.UserWhereInput[] = [
+      { firstName: { contains: pattern, mode: 'insensitive' } },
+      { lastName: { contains: pattern, mode: 'insensitive' } },
+    ];
+
+    // Email is hidden from managers outside their teams: searching it would leak it
+    if (actor.role === 'admin') searchFields.push({ email: { contains: pattern, mode: 'insensitive' } });
+
+    where.OR = searchFields;
+  }
+
+  return where;
+}
+
+// GET /users
+export async function listUsers(actor: Caller, query: ListUsersQuery) {
+  const { page, limit } = query;
+  const where = userListWhere(actor, query);
+  const skip = (page - 1) * limit;
+
+  const [rows, total, teamIds] = await Promise.all([
+    prisma.user.findMany({
+      where,
+      select: userSelect,
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }, { id: 'asc' }],
+      skip,
+      take: limit,
+    }),
+    prisma.user.count({ where }),
+    managedTeamIds(actor),
+  ]);
+
+  // Full profile for the admin, self and members of the caller's teams (KAN-21)
+  const isInScope = (user: UserRecord) =>
+    actor.role === 'admin' ||
+    isSelf(actor, user.id) ||
+    user.memberships.some(membership => teamIds.has(membership.team.id));
+
+  return {
+    data: rows.map(user => (isInScope(user) ? toFullUser(user) : toReducedUser(user))),
+    meta: { page, limit, total },
+  };
 }

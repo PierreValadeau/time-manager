@@ -1,6 +1,7 @@
 import type { RequestHandler } from 'express';
 import AppError from '../errors/AppError';
-import { createUser } from '../services/user.service';
+import { createUser, listUsers } from '../services/user.service';
+import type { ListUsersQuery } from '../schemas/user.schema';
 
 // POST /users
 export const createUserHandler: RequestHandler = async (req, res) => {
@@ -10,4 +11,15 @@ export const createUserHandler: RequestHandler = async (req, res) => {
   }
   const user = await createUser(req.user, req.body);
   res.status(201).json(user);
+};
+
+// GET /users
+export const listUsersHandler: RequestHandler = async (req, res) => {
+  if (!req.user) {
+    throw new AppError(401, 'UNAUTHENTICATED', 'Authentification requise');
+  }
+
+  // Parsed by validate() with listUsersQuerySchema: Express cannot type that itself
+  const query = req.query as unknown as ListUsersQuery;
+  res.json(await listUsers(req.user, query));
 };

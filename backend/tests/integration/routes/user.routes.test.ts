@@ -9,12 +9,17 @@ import { ACCESS_TOKEN_COOKIE, signAccessToken } from '../../../src/lib/jwt';
 
 // Integration test: the real app (middlewares, route, controller, service) over HTTP,
 // with only the database and the mailer mocked
-vi.mock('../../../src/lib/prisma', () => ({ default: { user: { create: vi.fn() } } }));
+vi.mock('../../../src/lib/prisma', () => ({ default: { 
+  user: { create: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+  team: { findMany: vi.fn() },
+} }));
 vi.mock('../../../src/services/mail.service', () => ({ sendSetupLink: vi.fn() }));
 
 const createMock = prisma.user.create as unknown as Mock;
 const sendSetupLinkMock = sendSetupLink as unknown as Mock;
-
+const findUsersMock = prisma.user.findMany as unknown as Mock; 
+const countUsersMock = prisma.user.count as unknown as Mock; 
+const findTeamsMock = prisma.team.findMany as unknown as Mock; 
 const SECRET = 'test-secret-that-is-at-least-32-characters';
 const body = { firstName: 'Jean', lastName: 'Dupont', email: 'Jean.Dupont@Trinity.com' };
 
@@ -29,6 +34,22 @@ const dbUser = (role: 'employee' | 'manager') => ({
   updatedAt: new Date('2026-10-09T08:00:00Z'),
   memberships: [],
 });
+
+const listedUser = (id: string, teamIds: string[] = []) => ({
+  ...dbUser('employee'),
+  id,
+  email: `${id}@trinity.com`,
+  memberships: teamIds.map(teamId => ({ team: { id: teamId, name: `Team ${teamId}` } })),
+});
+
+const getUsers = async (role: 'employee' | 'manager' | 'admin' | null, search = '') => {
+  const headers: Record<string, string> = {}; 
+  if (role) {
+    headers.cookie = `${ACCESS_TOKEN_COOKIE} = ${signAccessToken({ id: `${role}-id`, role })}`; 
+  }
+  const res = await fetch(`${baseUrl}/api/v1/users${search}`, { headers }); 
+  return { status: res.status, body: await res.json() }; 
+}
 
 let server: Server;
 let baseUrl: string;
@@ -160,3 +181,47 @@ describe('POST /api/v1/users: creation', () => {
     expect(res.body.error.code).toBe('CONFLICT');
   });
 });
+
+describe('GET /api/v1/users', () => {
+  beforeEach(() => {
+    findUsersMock.mockResolvedValue([]);
+    countUsersMock.mockResolvedValue(0);
+    findTeamsMock.mockResolvedValue([]);
+  });
+
+  it('answers 401 without session', async () => {
+    expect((await getUsers(null)).status).toBe(401);
+  });
+
+  it('answers 403 to an employee', async () => {
+    expect((await getUsers('employee')).status).toBe(403);
+    expect(findUsersMock).not.toHaveBeenCalled();
+  });
+
+  it('uses page 1 and limit 20 by default', async () => {
+    const res = await getUsers('admin');
+    expect(res.status).toBe(200);
+    expect(res.body.meta).toEqual({ page: 1, limit: 20, total: 0 });
+  });
+
+  it('answers 400 for an unknown role', async () => {
+    expect((await getUsers('admin', '?role=boss')).status).toBe(400);
+  });
+
+  it('answers 400 when teamId is not a UUID', async () => {
+    expect((await getUsers('admin', '?teamId=abc')).status).toBe(400);
+  });
+
+  it('answers 400 above the maximum limit of 100', async () => {
+    expect((await getUsers('admin', '?limit=101')).status).toBe(400);
+  });
+
+  it('hides the email of users outside the manager teams', async () => {
+    findUsersMock.mockResolvedValue([listedUser('outsider', ['other-team'])]);
+    const res = await getUsers('manager');
+    expect(res.status).toBe(200);
+    expect(res.body.data[0]).not.toHaveProperty('email');
+    expect(res.body.data[0]).not.toHaveProperty('phoneNumber');
+  });
+});
+
