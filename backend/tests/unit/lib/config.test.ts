@@ -53,7 +53,7 @@ describe('appTimezone', () => {
 });
 
 describe('workdayStartMinutes', () => {
-  it('defaults to 09:00, as in the contract', () => {
+  it('defaults to 09:00 when the variable is missing', () => {
     vi.stubEnv('WORKDAY_START', undefined);
     expect(workdayStartMinutes()).toBe(540);
     vi.stubEnv('WORKDAY_START', '');
@@ -76,7 +76,7 @@ describe('workdayStartMinutes', () => {
 });
 
 describe('lateToleranceMinutes', () => {
-  it('defaults to 5 minutes, as in the contract', () => {
+  it('defaults to 5 minutes when the variable is missing', () => {
     vi.stubEnv('LATE_TOLERANCE_MINUTES', undefined);
     expect(lateToleranceMinutes()).toBe(5);
     vi.stubEnv('LATE_TOLERANCE_MINUTES', '');
@@ -97,7 +97,7 @@ describe('lateToleranceMinutes', () => {
 });
 
 describe('weeklyReferenceMinutes', () => {
-  it('defaults to 35 h, as in the contract, returned in minutes', () => {
+  it('defaults to 35 h, returned in minutes, when the variable is missing', () => {
     vi.stubEnv('WEEKLY_REFERENCE_HOURS', undefined);
     expect(weeklyReferenceMinutes()).toBe(2100);
     vi.stubEnv('WEEKLY_REFERENCE_HOURS', '');
