@@ -46,7 +46,11 @@ async function mockApi(page: Page, session: Session) {
   await page.route('**/api/v1/**', route =>
     route.fulfill({ status: 404, json: { error: { code: 'NOT_FOUND', message: 'Not mocked in e2e/a11y.spec.ts' } } }),
   );
-  await page.route('**/api/v1/health', route => route.fulfill({ json: { status: 'ok' } }));
+  // Off duty, nothing clocked today: the home page shows the clock-in button and an empty history
+  await page.route('**/api/v1/users/me/clocks/current', route => route.fulfill({ json: null }));
+  await page.route('**/api/v1/users/me/clocks?*', route =>
+    route.fulfill({ json: { data: [], meta: { page: 1, limit: 100, total: 0 } } }),
+  );
   // A visitor gets 401 on both: the app then shows the login page
   await page.route('**/api/v1/auth/refresh', route => route.fulfill(UNAUTHORIZED));
   await page.route('**/api/v1/auth/me', route =>
