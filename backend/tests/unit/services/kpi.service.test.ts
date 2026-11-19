@@ -205,7 +205,7 @@ describe('computePunctuality', () => {
 describe('completeWeeks', () => {
   it('returns the ISO weeks entirely inside October 2026', () => {
     // 1 October is a Thursday, 31 October a Saturday
-    expect(completeWeeks('2026-10-01', '2026-10-31', TZ).map((w) => w.week)).toEqual([
+    expect(completeWeeks('2026-10-01', '2026-10-31', TZ)).toEqual([
       '2026-W41',
       '2026-W42',
       '2026-W43',
@@ -213,9 +213,7 @@ describe('completeWeeks', () => {
   });
 
   it('keeps a period of exactly Monday to Sunday', () => {
-    expect(completeWeeks('2026-10-05', '2026-10-11', TZ)).toEqual([
-      { week: '2026-W41', start: new Date('2026-10-04T22:00:00Z'), end: new Date('2026-10-11T22:00:00Z') },
-    ]);
+    expect(completeWeeks('2026-10-05', '2026-10-11', TZ)).toEqual(['2026-W41']);
   });
 
   it('returns no week for a period shorter than 7 days', () => {
@@ -232,16 +230,12 @@ describe('completeWeeks', () => {
 
   it('uses local midnights across the switch to summer time', () => {
     // Week 13 of 2026 ends on Sunday 29 March, a 23-hour day
-    expect(completeWeeks('2026-03-23', '2026-03-29', TZ)).toEqual([
-      { week: '2026-W13', start: new Date('2026-03-22T23:00:00Z'), end: new Date('2026-03-29T22:00:00Z') },
-    ]);
+    expect(completeWeeks('2026-03-23', '2026-03-29', TZ)).toEqual(['2026-W13']);
   });
 
   it('uses local midnights across the switch to winter time', () => {
     // Week 43 of 2026 ends on Sunday 25 October, a 25-hour day
-    expect(completeWeeks('2026-10-19', '2026-10-25', TZ)).toEqual([
-      { week: '2026-W43', start: new Date('2026-10-18T22:00:00Z'), end: new Date('2026-10-25T23:00:00Z') },
-    ]);
+    expect(completeWeeks('2026-10-19', '2026-10-25', TZ)).toEqual(['2026-W43']);
   });
 
   it('leaves out a week not finished at endedBy', () => {
@@ -252,11 +246,11 @@ describe('completeWeeks', () => {
   it('keeps a week ending exactly at endedBy', () => {
     // Monday 9 November 00:00 in Paris
     const endedBy = new Date('2026-11-08T23:00:00Z');
-    expect(completeWeeks('2026-11-02', '2026-11-08', TZ, endedBy).map((w) => w.week)).toEqual(['2026-W45']);
+    expect(completeWeeks('2026-11-02', '2026-11-08', TZ, endedBy)).toEqual(['2026-W45']);
   });
 
   it('uses the ISO year at the turn of the year', () => {
-    expect(completeWeeks('2026-12-28', '2027-01-03', TZ).map((w) => w.week)).toEqual(['2026-W53']);
+    expect(completeWeeks('2026-12-28', '2027-01-03', TZ)).toEqual(['2026-W53']);
   });
 
   it('throws on an invalid date', () => {
@@ -268,7 +262,7 @@ describe('completeWeeks', () => {
   });
 
   it('gives the first ISO week of the next year to late December days', () => {
-    expect(completeWeeks('2025-12-29', '2026-01-04', TZ).map((w) => w.week)).toEqual(['2026-W01']);
+    expect(completeWeeks('2025-12-29', '2026-01-04', TZ)).toEqual(['2026-W01']);
   });
 });
 

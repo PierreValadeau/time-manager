@@ -43,12 +43,6 @@ export type Overtime = {
   weeks: WeekOvertime[];
 };
 
-export type CompleteWeek = {
-  week: string;
-  start: Date;
-  end: Date; // exclusive
-};
-
 // One decimal, null when no day was worked
 export function punctualityRate(punctualDays: number, workedDays: number): number | null {
   if (workedDays === 0) return null;
@@ -56,7 +50,7 @@ export function punctualityRate(punctualDays: number, workedDays: number): numbe
   return Math.round((punctualDays * 1000) / workedDays) / 10;
 }
 
-// Contract, section 7. Anomaly and open sessions count: the arrival is still real
+// Anomaly and open sessions count: the arrival is still real
 export function computePunctuality(sessions: ClockSession[], options: PunctualityOptions): Punctuality {
   const { timezone, workdayStartMinutes, lateToleranceMinutes } = options;
   const deadline = workdayStartMinutes + lateToleranceMinutes;
@@ -85,26 +79,25 @@ export function computePunctuality(sessions: ClockSession[], options: Punctualit
   };
 }
 
-// ISO weeks entirely inside [from, to] and, with endedBy, finished by then
-export function completeWeeks(from: string, to: string, timezone: string, endedBy?: Date): CompleteWeek[] {
+// ISO week keys entirely inside [from, to] and, with endedBy, finished by then
+export function completeWeeks(from: string, to: string, timezone: string, endedBy?: Date): string[] {
   const first = DateTime.fromISO(from, { zone: timezone }).startOf('day');
   const last = DateTime.fromISO(to, { zone: timezone });
   if (!first.isValid || !last.isValid) throw new Error(`Invalid date or timezone: ${from}, ${to}`);
-  const endExclusive = last.plus({ days: 1 }).startOf('day');
+  const dayAfterTo = last.plus({ days: 1 }).startOf('day');
 
   let monday = first.weekday === 1 ? first : first.plus({ weeks: 1 }).startOf('week');
-  const weeks: CompleteWeek[] = [];
-  while (monday.plus({ weeks: 1 }) <= endExclusive) {
+  const weeks: string[] = [];
+  while (monday.plus({ weeks: 1 }) <= dayAfterTo) {
     const next = monday.plus({ weeks: 1 });
     if (endedBy && next.toJSDate() > endedBy) break;
-    const start = monday.toJSDate();
-    weeks.push({ week: periodKey(start, 'week', timezone), start, end: next.toJSDate() });
+    weeks.push(periodKey(monday.toJSDate(), 'week', timezone));
     monday = next;
   }
   return weeks;
 }
 
-// Contract, section 7. Only complete, finished weeks without an open session
+// Only complete, finished weeks without an open session
 export function computeOvertime(sessions: ClockSession[], options: OvertimeOptions): Overtime {
   const { from, to, timezone, now, anomalyThresholdHours, weeklyReferenceMinutes } = options;
   const weeks = completeWeeks(from, to, timezone, now);
@@ -112,7 +105,7 @@ export function computeOvertime(sessions: ClockSession[], options: OvertimeOptio
   const byWeek = new Map(summary.periods.map((p) => [p.period, p]));
 
   const counted: WeekOvertime[] = [];
-  for (const { week } of weeks) {
+  for (const week of weeks) {
     const period = byWeek.get(week);
     if (period?.status === 'open') continue;
     const workedMinutes = period?.workedMinutes ?? 0;
