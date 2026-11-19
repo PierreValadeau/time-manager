@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import prisma from '../../../src/lib/prisma';
 import AppError from '../../../src/errors/AppError';
-import { createTeam, deleteTeam, getTeam, listTeams } from '../../../src/services/team.service';
+import { createTeam, deleteTeam, getTeam, listTeams, addTeamMember, removeTeamMember } from '../../../src/services/team.service';
 
 // Real database, nothing mocked: the cascade and the unique constraint come from PostgreSQL
 const admin = { id: 'admin-id', role: 'admin' as const };
 
 // setup.ts empties every table before each test: each test creates its own rows
-const createUser = (email: string, role: 'employee' | 'manager') =>
+const createUser = (email: string, role: 'employee' | 'manager' | 'admin') =>
   prisma.user.create({ data: { firstName: 'Test', lastName: role, email, role } });
 
 describe('deleteTeam (PostgreSQL)', () => {
@@ -93,5 +93,68 @@ describe('listTeams (PostgreSQL)', () => {
     const percent = await listTeams(admin, { page: 1, limit: 20, search: '%' });
     expect(percent.data).toEqual([]);
     expect(percent.meta.total).toBe(0);
+  });
+});
+
+describe('team members (PostgreSQL)', () => {
+  it('adds a member once, however many times it is called', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const employee = await createUser('employee@trinity.com', 'employee');
+    const team = await prisma.team.create({ data: { name: 'Team A', managerId: manager.id } });
+
+    await addTeamMember(admin, team.id, employee.id);
+    await addTeamMember(admin, team.id, employee.id);
+
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(1);
+  });
+
+  it('removes the membership but keeps the user', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const employee = await createUser('employee@trinity.com', 'employee');
+    const team = await prisma.team.create({
+      data: { name: 'Team A', managerId: manager.id, members: { create: { userId: employee.id } } },
+    });
+
+    await removeTeamMember(admin, team.id, employee.id);
+
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
+    expect(await prisma.user.findUnique({ where: { id: employee.id } })).not.toBeNull();
+  });
+
+  it('removes an anonymized member from a team and keeps the anonymized account', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const gone = await prisma.user.create({
+      data: { firstName: 'Utilisateur', lastName: 'supprimé', email: 'deleted-1@trinity.invalid', deletedAt: new Date() },
+    });
+    const team = await prisma.team.create({
+      data: { name: 'Team A', managerId: manager.id, members: { create: { userId: gone.id } } },
+    });
+    const caller = { id: manager.id, role: 'manager' as const };
+
+    await removeTeamMember(caller, team.id, gone.id);
+
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
+    expect(await prisma.user.findUnique({ where: { id: gone.id } })).not.toBeNull();
+  });
+
+  it('still refuses to add an anonymized account (404)', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const gone = await prisma.user.create({
+      data: { firstName: 'Utilisateur', lastName: 'supprimé', email: 'deleted-1@trinity.invalid', deletedAt: new Date() },
+    });
+    const team = await prisma.team.create({ data: { name: 'Team A', managerId: manager.id } });
+
+    await expect(addTeamMember(admin, team.id, gone.id)).rejects.toMatchObject({ status: 404 });
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
+  });
+
+  it('never adds the admin account to a team', async () => {
+    const manager = await createUser('manager@trinity.com', 'manager');
+    const root = await createUser('root@trinity.com', 'admin');
+    const team = await prisma.team.create({ data: { name: 'Team A', managerId: manager.id } });
+    const caller = { id: manager.id, role: 'manager' as const };
+
+    await expect(addTeamMember(caller, team.id, root.id)).rejects.toMatchObject({ status: 400 });
+    expect(await prisma.teamMember.count({ where: { teamId: team.id } })).toBe(0);
   });
 });
