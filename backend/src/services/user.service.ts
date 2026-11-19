@@ -2,8 +2,8 @@ import { Prisma, type UserRole } from '@prisma/client';
 import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { sendSetupLink } from './mail.service';
-import { isSelf, managedTeamIds, type Caller } from './scope.service';
-import type { CreateUserInput, ListUsersQuery } from '../schemas/user.schema';
+import { isManagerOfEmployee, isSelf, managedTeamIds, resolveUserId, type Caller } from './scope.service';
+import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from '../schemas/user.schema';
 import { generateToken, hashToken } from '../lib/token';
 import { escapeLike } from '../lib/escapeLike';
 
@@ -26,6 +26,8 @@ const getFrontendUrl = () => {
   return value.replace(/\/+$/, '');
 };
 
+const forbidden = () => new AppError(403, 'FORBIDDEN', 'Droits insuffisants pour cette action');
+
 // P2002 on the email column (tokenHash is unique too)
 const isEmailTaken = (err: unknown) => {
   if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002') return false;
@@ -33,6 +35,10 @@ const isEmailTaken = (err: unknown) => {
   const fields = Array.isArray(target) ? target : [target];
   return fields.some(field => String(field).includes('email'));
 };
+
+// P2025: the row to update no longer matches the where (deleted or anonymized meanwhile)
+const isRecordNotFound = (err: unknown) =>
+  err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
 
 export const userSelect = {
   id: true,
@@ -161,4 +167,79 @@ export async function listUsers(actor: Caller, query: ListUsersQuery) {
     data: rows.map(user => (isInScope(user) ? toFullUser(user) : toReducedUser(user))),
     meta: { page, limit, total },
   };
+}
+
+// GET /users/:id: the full profile for self, a manager of the user and the admin
+// the reduced one for any other manager (contract, section 4)
+export async function getUser(actor: Caller, id: string) {
+  const userId = resolveUserId(actor, id);
+  const self = isSelf(actor, userId);
+
+  // An employee only reads their own account; refused before the lookup, so the answer never reveals whether it exists
+  if (!self && actor.role === 'employee') throw forbidden();
+
+  // Anonymized accounts no longer exist for the API (contract, section 4)
+  const user = await prisma.user.findUnique({
+    where: { id: userId, deletedAt: null },
+    select: userSelect,
+  });
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
+
+  // isManagerOfEmployee is also true for the admin
+  const fullProfile = self || (await isManagerOfEmployee(actor, userId));
+  return fullProfile ? toFullUser(user) : toReducedUser(user);
+}
+
+// PUT /users/:id: self, manager of the employee or the admin
+export async function updateUser(actor: Caller, id: string, input: UpdateUserInput) {
+  const userId = resolveUserId(actor, id);
+  const self = isSelf(actor, userId);
+
+  // An employee only edits their own account; refused before the lookup, so the answer never reveals whether it exists
+  if (!self && actor.role === 'employee') throw forbidden();
+
+  // Anonymized accounts no longer exist for the API (contract, section 4)
+  const user = await prisma.user.findUnique({
+    where: { id: userId, deletedAt: null },
+    select: { role: true },
+  });
+  if (!user) throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
+
+  if (!self && actor.role !== 'admin') {
+    // A manager only edits employees: whitelist, so any other role is refused by default
+    if (user.role !== 'employee') throw forbidden();
+    if (!(await isManagerOfEmployee(actor, userId))) throw forbidden();
+  }
+
+  // An unchanged role is accepted from anyone, so a client can send back the whole profile
+  const roleChanges = input.role !== undefined && input.role !== user.role;
+  if (roleChanges && actor.role !== 'admin') throw forbidden();
+  // Nobody becomes admin through the API (KAN-22): same answer as POST /users with role admin
+  if (roleChanges && input.role === 'admin') {
+    throw new AppError(400, 'VALIDATION_ERROR', 'Le rôle admin ne peut pas être attribué', [
+      { field: 'role', issue: 'invalid' },
+    ]);
+  }
+  // The admin account keeps its role, even when the admin asks: it is the only account that manages roles
+  if (roleChanges && user.role === 'admin') throw forbidden();
+
+  let updatedUser: UserRecord;
+  try {
+    updatedUser = await prisma.user.update({
+      // deletedAt repeated here: an account anonymized since the lookup must not get its data back
+      where: { id: userId, deletedAt: null },
+      data: input,
+      select: userSelect,
+    });
+  } catch (err) {
+    if (isEmailTaken(err)) {
+      throw new AppError(409, 'CONFLICT', 'Un utilisateur avec cet email existe déjà');
+    }
+    if (isRecordNotFound(err)) {
+      throw new AppError(404, 'NOT_FOUND', 'Utilisateur introuvable');
+    }
+    throw err;
+  }
+
+  return toFullUser(updatedUser);
 }

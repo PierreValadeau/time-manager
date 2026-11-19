@@ -10,8 +10,8 @@ import validate from '../middlewares/validate';
 import {
   clockHistoryQuerySchema,
   clockSummaryQuerySchema,
-  userIdParamSchema,
 } from '../schemas/clock.schema';
+import { userIdParamSchema } from '../schemas/common.schema';
 
 // Mounted on /users/:id/clocks: mergeParams exposes the parent :id here
 const router = Router({ mergeParams: true });

@@ -10,6 +10,9 @@ export type Caller = NonNullable<Express.Request['user']>;
 // "Soi": the caller acts on their own account
 export const isSelf = (caller: Caller, userId: string) => caller.id === userId;
 
+// Alias me (contract, section 1): the caller's own id
+export const resolveUserId = (caller: Caller, id: string) => id === 'me' ? caller.id : id;
+
 // "Manager de l'équipe": the designated manager of the team, or the admin
 export async function isTeamManager(caller: Caller, teamId: string) {
   if (caller.role === 'admin') return true;
