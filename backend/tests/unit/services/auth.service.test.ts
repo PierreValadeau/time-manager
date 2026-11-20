@@ -1,16 +1,16 @@
 import crypto from 'node:crypto';
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import prisma from '../../../src/lib/prisma';
-import { verifyPassword } from '../../../src/lib/password';
+import { hashPassword, verifyPassword } from '../../../src/lib/password';
 import { verifyAccessToken } from '../../../src/lib/jwt';
-import { login, refresh, logout, getMe } from '../../../src/services/auth.service';
+import { login, refresh, logout, getMe, changePassword } from '../../../src/services/auth.service';
 import { userSelect } from '../../../src/services/user.service'; 
 
 // No database: Prisma is mocked. bcrypt is mocked too.
 // $transaction runs its callback with the same mocked client as tx
 vi.mock('../../../src/lib/prisma', () => {
   const db = {
-    user: { findUnique: vi.fn() },
+    user: { findUnique: vi.fn(), update: vi.fn() },
     refreshToken: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(),
   };
@@ -28,6 +28,8 @@ const createTokenMock = prisma.refreshToken.create as unknown as Mock;
 const findTokenMock = prisma.refreshToken.findUnique as unknown as Mock;
 const revokeTokenMock = prisma.refreshToken.updateMany as unknown as Mock;
 const verifyPasswordMock = verifyPassword as unknown as Mock;
+const hashPasswordMock = hashPassword as unknown as Mock;
+const updateUserMock = prisma.user.update as unknown as Mock;
 
 const sha256 = (value: string) => crypto.createHash('sha256').update(value).digest('hex');
 
@@ -233,3 +235,95 @@ describe('getMe', () => {
     await expect(getMe('001')).rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED', message: 'Session absente ou expirée' })
   })
 })
+
+describe('changePassword', () => {
+  const change = { currentPassword: 'old-password', newPassword: 'new-password-12' };
+  const sessionError = { status: 401, code: 'UNAUTHENTICATED', message: 'Session absente ou expirée' };
+  const wrongPasswordError = { status: 401, code: 'UNAUTHENTICATED', message: 'Mot de passe actuel incorrect' };
+
+  const expectNoWrite = () => {
+    expect(updateUserMock).not.toHaveBeenCalled();
+    expect(revokeTokenMock).not.toHaveBeenCalled();
+    expect(createTokenMock).not.toHaveBeenCalled();
+  };
+
+  beforeEach(() => {
+    findUniqueMock.mockResolvedValue({ passwordHash: 'real-hash', deletedAt: null });
+    revokeTokenMock.mockResolvedValue({ count: 2 });
+  });
+
+  describe('failures', () => {
+    it('answers 401 when the user no longer exists, and writes nothing', async () => {
+      findUniqueMock.mockResolvedValue(null);
+      await expect(changePassword('001', change)).rejects.toMatchObject(sessionError);
+      expectNoWrite();
+    });
+
+    it('answers 401 for a soft-deleted user, and writes nothing', async () => {
+      findUniqueMock.mockResolvedValue({ passwordHash: null, deletedAt: new Date() });
+      await expect(changePassword('001', change)).rejects.toMatchObject(sessionError);
+      expectNoWrite();
+    });
+
+    it('answers 401 for an account without a password (Microsoft-only), without comparing', async () => {
+      findUniqueMock.mockResolvedValue({ passwordHash: null, deletedAt: null });
+      await expect(changePassword('001', change)).rejects.toMatchObject(wrongPasswordError);
+      expect(verifyPasswordMock).not.toHaveBeenCalled();
+      expectNoWrite();
+    });
+
+    it('answers 401 when the current password is wrong, without hashing or writing', async () => {
+      verifyPasswordMock.mockResolvedValue(false);
+      await expect(changePassword('001', change)).rejects.toMatchObject(wrongPasswordError);
+      expect(hashPasswordMock).not.toHaveBeenCalled();
+      expectNoWrite();
+    });
+
+    it('lets an error inside the transaction propagate', async () => {
+      createTokenMock.mockRejectedValueOnce(new Error('insert failed'));
+      await expect(changePassword('001', change)).rejects.toThrow('insert failed');
+    });
+  });
+
+  describe('success', () => {
+    it('reads only the password hash and deletedAt of the caller', async () => {
+      await changePassword('001', change);
+      expect(findUniqueMock.mock.lastCall![0]).toEqual({
+        where: { id: '001' },
+        select: { passwordHash: true, deletedAt: true },
+      });
+    });
+
+    it('checks the current password against the stored hash and hashes the new one', async () => {
+      await changePassword('001', change);
+      expect(verifyPasswordMock).toHaveBeenCalledWith('old-password', 'real-hash');
+      expect(hashPasswordMock).toHaveBeenCalledWith('new-password-12');
+    });
+
+    it('stores the new hash, revokes every active refresh token, then issues a new one, in this order', async () => {
+      await changePassword('001', change);
+
+      expect(updateUserMock.mock.lastCall![0]).toEqual({ where: { id: '001' }, data: { passwordHash: 'dummy-hash' } });
+      const { where, data } = revokeTokenMock.mock.lastCall![0];
+      expect(where).toEqual({ userId: '001', revokedAt: null });
+      expect(data.revokedAt).toBeInstanceOf(Date);
+
+      // Revoking after issuing would revoke the new token too
+      const [update] = updateUserMock.mock.invocationCallOrder;
+      const [revoke] = revokeTokenMock.mock.invocationCallOrder;
+      const [create] = createTokenMock.mock.invocationCallOrder;
+      expect(update).toBeLessThan(revoke);
+      expect(revoke).toBeLessThan(create);
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the raw refresh token; only its SHA-256 hash is stored, valid 7 days', async () => {
+      const refreshToken = await changePassword('001', change);
+      const { data } = createTokenMock.mock.lastCall![0];
+      expect(typeof refreshToken).toBe('string');
+      expect(data.userId).toBe('001');
+      expect(data.tokenHash).toBe(sha256(refreshToken));
+      expect(data.expiresAt.getTime() - Date.now()).toBeCloseTo(7 * 24 * 3600 * 1000, -4);
+    });
+  });
+});
