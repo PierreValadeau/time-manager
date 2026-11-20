@@ -5,7 +5,7 @@ import { hashPassword, verifyPassword } from '../lib/password';
 import { signAccessToken } from '../lib/jwt';
 import { hashToken, generateToken, REFRESH_TOKEN_TTL_MS } from '../lib/token'; 
 import { toFullUser, userSelect } from './user.service';
-import type { LoginInput } from '../schemas/auth.schema';
+import type { ChangePasswordInput, LoginInput } from '../schemas/auth.schema';
 
 
 // db: pass the transaction client (tx) to write inside a transaction, defaults to prisma
@@ -17,9 +17,20 @@ async function issueRefreshToken(userId: string, db: Prisma.TransactionClient = 
 
     return token; 
 }
+
+async function revokeAllRefreshTokens(userId: string, db: Prisma.TransactionClient = prisma) {
+    await db.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+    });
+}
+
 //same error for every failure 
 const invalidCredentials = () => 
     new AppError(401, 'UNAUTHENTICATED', 'Email ou mot de passe incorrect'); 
+
+const wrongCurrentPassword = () =>
+    new AppError(401, 'UNAUTHENTICATED', 'Mot de passe actuel incorrect');
 
 const invalidSession = () => 
     new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
@@ -112,4 +123,36 @@ export async function getMe(userId: string) {
     if (deletedAt) throw invalidSession(); 
 
     return toFullUser(profile); 
+}
+
+// PUT /auth/password
+export async function changePassword(userId: string, { currentPassword, newPassword }: ChangePasswordInput) {
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { 
+            passwordHash: true,
+            deletedAt: true,
+        }
+    });
+
+    if (!user || user.deletedAt) throw invalidSession();
+
+    // Accounts without password hash (Microsoft-only)
+    if (!user.passwordHash) throw wrongCurrentPassword();
+
+    if (!(await verifyPassword(currentPassword, user.passwordHash))) throw wrongCurrentPassword();
+
+    const passwordHash = await hashPassword(newPassword);
+
+    return prisma.$transaction(async tx => {
+        await tx.user.update({
+            where: { id: userId },
+            data: { passwordHash }
+        });
+
+        await revokeAllRefreshTokens(userId, tx);
+
+        const refreshToken = await issueRefreshToken(userId, tx);
+        return { refreshToken };
+    });
 }

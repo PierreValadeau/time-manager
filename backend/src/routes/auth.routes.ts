@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { authenticate } from '../middlewares/auth';
 import { authLimiter, userLimiter } from '../middlewares/rateLimit';
 import validate from '../middlewares/validate';
-import { loginSchema } from '../schemas/auth.schema';
-import { loginHandler, logoutHandler, meHandler, refreshHandler } from '../controllers/auth.controller';
+import { changePasswordSchema, loginSchema } from '../schemas/auth.schema';
+import { changePasswordHandler, loginHandler, logoutHandler, meHandler, refreshHandler } from '../controllers/auth.controller';
 
 const router = Router();
 
@@ -17,6 +17,8 @@ router.post('/refresh', refreshHandler);
 router.post('/logout', logoutHandler);
 
 router.get('/me', authenticate, userLimiter, meHandler);
+
+router.put('/password', authenticate, userLimiter, validate({ body: changePasswordSchema }), changePasswordHandler);
 
 
 export default router;

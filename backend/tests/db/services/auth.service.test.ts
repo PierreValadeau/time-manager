@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import prisma from '../../../src/lib/prisma';
 import { generateToken, hashToken, REFRESH_TOKEN_TTL_MS } from '../../../src/lib/token';
-import { logout, refresh } from '../../../src/services/auth.service';
+import { hashPassword, verifyPassword } from '../../../src/lib/password';
+import { changePassword, logout, refresh } from '../../../src/services/auth.service';
 
 // Real database. generateToken is wrapped in a spy (real implementation by default)
 // so one test can force a hash collision and make the insert fail
@@ -115,5 +116,98 @@ describe('logout (PostgreSQL)', () => {
     await logout(token);
 
     await expect(refresh('other-device')).resolves.toBeDefined();
+  });
+});
+
+describe('changePassword (PostgreSQL)', () => {
+  const OLD = 'old-password-12';
+  const NEW = 'new-password-12';
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+  // The seeded user gets a real bcrypt hash, a second active session and a token revoked yesterday
+  const seedAccount = async () => {
+    const { user, token } = await seed();
+    await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(OLD) } });
+    await prisma.refreshToken.create({
+      data: { userId: user.id, tokenHash: hashToken('other-device'), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
+    });
+    await prisma.refreshToken.create({
+      data: { userId: user.id, tokenHash: hashToken('revoked-yesterday'), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS), revokedAt: yesterday },
+    });
+    return { user, token };
+  };
+
+  const storedHash = async (userId: string) =>
+    (await prisma.user.findUniqueOrThrow({ where: { id: userId } })).passwordHash!;
+
+  it('revokes every active token and keeps the date of a token revoked earlier', async () => {
+    const { user, token } = await seedAccount();
+
+    await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
+
+    for (const old of [token, 'other-device']) {
+      const row = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken(old) } });
+      expect(row!.revokedAt).toBeInstanceOf(Date);
+    }
+    const earlier = await prisma.refreshToken.findUnique({ where: { tokenHash: hashToken('revoked-yesterday') } });
+    expect(earlier!.revokedAt).toEqual(yesterday);
+  });
+
+  it('leaves exactly one active token: the one it returns', async () => {
+    const { user } = await seedAccount();
+
+    const { refreshToken } = await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
+
+    const active = await prisma.refreshToken.findMany({ where: { userId: user.id, revokedAt: null } });
+    expect(active).toHaveLength(1);
+    expect(active[0].tokenHash).toBe(hashToken(refreshToken));
+    await expect(refresh(refreshToken)).resolves.toBeDefined();
+  });
+
+  it('stores a hash that accepts the new password and refuses the old one', async () => {
+    const { user } = await seedAccount();
+
+    await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
+
+    const hash = await storedHash(user.id);
+    expect(await verifyPassword(NEW, hash)).toBe(true);
+    expect(await verifyPassword(OLD, hash)).toBe(false);
+  });
+
+  it('changes nothing when the current password is wrong', async () => {
+    const { user } = await seedAccount();
+    const before = await storedHash(user.id);
+
+    await expect(changePassword(user.id, { currentPassword: 'wrong-password', newPassword: NEW }))
+      .rejects.toMatchObject({ status: 401, code: 'UNAUTHENTICATED' });
+
+    expect(await storedHash(user.id)).toBe(before);
+    expect(await prisma.refreshToken.count({ where: { userId: user.id, revokedAt: null } })).toBe(2);
+  });
+
+  it('rolls everything back when the new token cannot be stored', async () => {
+    const { user, token } = await seedAccount();
+    const before = await storedHash(user.id);
+    // The "new" token is an existing one: its hash is already stored, the insert hits the unique constraint
+    vi.mocked(generateToken).mockReturnValueOnce(token);
+
+    await expect(changePassword(user.id, { currentPassword: OLD, newPassword: NEW })).rejects.toThrow();
+
+    expect(await storedHash(user.id)).toBe(before);
+    expect(await prisma.refreshToken.count({ where: { userId: user.id, revokedAt: null } })).toBe(2);
+  });
+
+  it('does not touch the sessions of another user', async () => {
+    const { user } = await seedAccount();
+    const other = await prisma.user.create({
+      data: { firstName: 'Other', lastName: 'User', email: 'other.user@trinity.com' },
+    });
+    await prisma.refreshToken.create({
+      data: { userId: other.id, tokenHash: hashToken('other-user-token'), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
+    });
+
+    await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
+
+    await expect(refresh('other-user-token')).resolves.toBeDefined();
   });
 });
