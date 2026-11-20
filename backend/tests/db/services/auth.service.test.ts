@@ -125,7 +125,7 @@ describe('changePassword (PostgreSQL)', () => {
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   // The seeded user gets a real bcrypt hash, a second active session and a token revoked yesterday
-  const seedWithPassword = async () => {
+  const seedAccount = async () => {
     const { user, token } = await seed();
     await prisma.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(OLD) } });
     await prisma.refreshToken.create({
@@ -141,7 +141,7 @@ describe('changePassword (PostgreSQL)', () => {
     (await prisma.user.findUniqueOrThrow({ where: { id: userId } })).passwordHash!;
 
   it('revokes every active token and keeps the date of a token revoked earlier', async () => {
-    const { user, token } = await seedWithPassword();
+    const { user, token } = await seedAccount();
 
     await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
 
@@ -154,9 +154,9 @@ describe('changePassword (PostgreSQL)', () => {
   });
 
   it('leaves exactly one active token: the one it returns', async () => {
-    const { user } = await seedWithPassword();
+    const { user } = await seedAccount();
 
-    const refreshToken = await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
+    const { refreshToken } = await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
 
     const active = await prisma.refreshToken.findMany({ where: { userId: user.id, revokedAt: null } });
     expect(active).toHaveLength(1);
@@ -165,7 +165,7 @@ describe('changePassword (PostgreSQL)', () => {
   });
 
   it('stores a hash that accepts the new password and refuses the old one', async () => {
-    const { user } = await seedWithPassword();
+    const { user } = await seedAccount();
 
     await changePassword(user.id, { currentPassword: OLD, newPassword: NEW });
 
@@ -175,7 +175,7 @@ describe('changePassword (PostgreSQL)', () => {
   });
 
   it('changes nothing when the current password is wrong', async () => {
-    const { user } = await seedWithPassword();
+    const { user } = await seedAccount();
     const before = await storedHash(user.id);
 
     await expect(changePassword(user.id, { currentPassword: 'wrong-password', newPassword: NEW }))
@@ -186,7 +186,7 @@ describe('changePassword (PostgreSQL)', () => {
   });
 
   it('rolls everything back when the new token cannot be stored', async () => {
-    const { user, token } = await seedWithPassword();
+    const { user, token } = await seedAccount();
     const before = await storedHash(user.id);
     // The "new" token is an existing one: its hash is already stored, the insert hits the unique constraint
     vi.mocked(generateToken).mockReturnValueOnce(token);
@@ -198,7 +198,7 @@ describe('changePassword (PostgreSQL)', () => {
   });
 
   it('does not touch the sessions of another user', async () => {
-    const { user } = await seedWithPassword();
+    const { user } = await seedAccount();
     const other = await prisma.user.create({
       data: { firstName: 'Other', lastName: 'User', email: 'other.user@trinity.com' },
     });

@@ -318,7 +318,7 @@ describe('changePassword', () => {
     });
 
     it('returns the raw refresh token; only its SHA-256 hash is stored, valid 7 days', async () => {
-      const refreshToken = await changePassword('001', change);
+      const { refreshToken } = await changePassword('001', change);
       const { data } = createTokenMock.mock.lastCall![0];
       expect(typeof refreshToken).toBe('string');
       expect(data.userId).toBe('001');

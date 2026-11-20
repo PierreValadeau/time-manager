@@ -152,6 +152,7 @@ export async function changePassword(userId: string, { currentPassword, newPassw
 
         await revokeAllRefreshTokens(userId, tx);
 
-        return issueRefreshToken(userId, tx);
+        const refreshToken = await issueRefreshToken(userId, tx);
+        return { refreshToken };
     });
 }

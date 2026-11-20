@@ -363,7 +363,7 @@ describe('GET /api/v1/auth/me', () => {
 });
 
 // PUT /api/v1/auth/password over HTTP, with the given Cookie header (if any)
-const changePassword = async (payload: unknown, cookieHeader?: string) => {
+const putPassword = async (payload: unknown, cookieHeader?: string) => {
   const res = await fetch(`${baseUrl}/api/v1/auth/password`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json', ...(cookieHeader ? { cookie: cookieHeader } : {}) },
@@ -385,18 +385,18 @@ describe('PUT /api/v1/auth/password', () => {
 
   describe('failures', () => {
     it('answers 401 without a session, before reading the database', async () => {
-      const res = await changePassword(change);
+      const res = await putPassword(change);
       expect(res.status).toBe(401);
       expect(findUniqueMock).not.toHaveBeenCalled();
     });
 
     it('answers 401, not 400, without a session and with an invalid body', async () => {
-      const res = await changePassword({ newPassword: 'short' });
+      const res = await putPassword({ newPassword: 'short' });
       expect(res.status).toBe(401);
     });
 
     it('answers 400 when the new password is under 12 characters', async () => {
-      const res = await changePassword({ ...change, newPassword: 'a'.repeat(11) }, session);
+      const res = await putPassword({ ...change, newPassword: 'a'.repeat(11) }, session);
       expect(res.status).toBe(400);
       const { error } = JSON.parse(res.text);
       expect(error.code).toBe('VALIDATION_ERROR');
@@ -405,7 +405,7 @@ describe('PUT /api/v1/auth/password', () => {
 
     it('answers 401 without any cookie when the current password is wrong', async () => {
       verifyPasswordMock.mockResolvedValue(false);
-      const res = await changePassword(change, session);
+      const res = await putPassword(change, session);
       expect(res.status).toBe(401);
       expect(JSON.parse(res.text).error.message).toBe('Mot de passe actuel incorrect');
       expect(res.cookies).toHaveLength(0);
@@ -414,13 +414,13 @@ describe('PUT /api/v1/auth/password', () => {
 
   describe('success', () => {
     it('answers 204 with an empty body', async () => {
-      const res = await changePassword(change, session);
+      const res = await putPassword(change, session);
       expect(res.status).toBe(204);
       expect(res.text).toBe('');
     });
 
     it('sets the refresh_token cookie with the same attributes as login', async () => {
-      const { cookies } = await changePassword(change, session);
+      const { cookies } = await putPassword(change, session);
       const refreshCookie = cookie(cookies, 'refresh_token');
       expect(refreshCookie).toMatch(/HttpOnly/);
       expect(refreshCookie).toMatch(/Secure/);
@@ -430,7 +430,7 @@ describe('PUT /api/v1/auth/password', () => {
     });
 
     it('puts the new token itself in the cookie: its hash is the one stored', async () => {
-      const { cookies } = await changePassword(change, session);
+      const { cookies } = await putPassword(change, session);
       const value = cookie(cookies, 'refresh_token')!.split(';')[0].split('=')[1];
       // A forgotten await would serialize the promise as j:{}
       expect(decodeURIComponent(value)).not.toMatch(/^j:/);
@@ -438,12 +438,12 @@ describe('PUT /api/v1/auth/password', () => {
     });
 
     it('does not set the access_token cookie: the current one stays valid', async () => {
-      const { cookies } = await changePassword(change, session);
+      const { cookies } = await putPassword(change, session);
       expect(cookie(cookies, 'access_token')).toBeUndefined();
     });
 
     it('does not go through authLimiter, shared with login and keyed by IP', async () => {
-      await changePassword(change, session);
+      await putPassword(change, session);
       expect(authLimiter).not.toHaveBeenCalled();
     });
   });

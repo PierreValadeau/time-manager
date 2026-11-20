@@ -45,7 +45,7 @@ export const changePasswordHandler: RequestHandler = async (req, res) => {
     if (!req.user) {
         throw new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
     }
-    const refreshToken = await changePassword(req.user.id, req.body);
+    const { refreshToken } = await changePassword(req.user.id, req.body);
     res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
 
     res.sendStatus(204);
