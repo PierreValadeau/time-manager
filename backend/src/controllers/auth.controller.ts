@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import AppError from '../errors/AppError';
-import { login, refresh, logout, getMe } from '../services/auth.service'; 
+import { login, refresh, logout, getMe, changePassword } from '../services/auth.service'; 
 import { ACCESS_TOKEN_COOKIE } from "../lib/jwt";
 import { REFRESH_TOKEN_COOKIE, accessCookieOptions, clearAccessCookieOptions, clearRefreshCookieOptions, refreshCookieOptions } from "../lib/cookie";
 
@@ -38,4 +38,15 @@ export const meHandler: RequestHandler = async (req, res) => {
         throw new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
     }
     res.status(200).json(await getMe(req.user.id));
+}
+
+// PUT /auth/password
+export const changePasswordHandler: RequestHandler = async (req, res) => {
+    if (!req.user) {
+        throw new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
+    }
+    const refreshToken = await changePassword(req.user.id, req.body);
+    res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
+
+    res.sendStatus(204);
 }
