@@ -8,7 +8,7 @@ export const loginSchema = z.object({
     password: z.string().min(1).max(128),
 });
 
-// Contract, section 3: at least 12 characters: 128 max like the login
+// Contract, section 3: at least 12 characters; 128 max like the login
 export const passwordSchema = z.string().min(12).max(128);
 
 // PUT /auth/password
