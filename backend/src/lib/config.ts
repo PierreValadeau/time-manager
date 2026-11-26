@@ -20,3 +20,12 @@ export function appTimezone(): string {
   }
   return zone;
 }
+
+// Read at call time; a missing or invalid value must fail before anything is written
+export function frontendUrl(): string {
+  const value = process.env.FRONTEND_URL;
+  if (!value || !URL.canParse(value)) {
+    throw new Error('FRONTEND_URL must be set to a valid URL');
+  }
+  return value.replace(/\/+$/, '');
+}

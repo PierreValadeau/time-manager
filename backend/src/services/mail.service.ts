@@ -4,3 +4,8 @@ export async function sendSetupLink(email: string, link: string): Promise<void> 
   if (process.env.NODE_ENV === 'production') return;
   console.info(`[mail] Password setup link for ${email}: ${link}`);
 }
+
+export async function sendResetLink(email: string, link: string): Promise<void> {
+  if (process.env.NODE_ENV === 'production') return;
+  console.info(`[mail] Password reset link for ${email}: ${link}`);
+}
