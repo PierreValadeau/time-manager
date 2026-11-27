@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { authenticate } from '../middlewares/auth';
-import { authLimiter, userLimiter, forgotPasswordLimiter } from '../middlewares/rateLimit';
+import { authLimiter, userLimiter, forgotPasswordLimiter, apiLimiter } from '../middlewares/rateLimit';
 import validate from '../middlewares/validate';
-import { changePasswordSchema, forgotPasswordSchema, loginSchema } from '../schemas/auth.schema';
-import { changePasswordHandler, forgotPasswordHandler, loginHandler, logoutHandler, meHandler, refreshHandler } from '../controllers/auth.controller';
+import { changePasswordSchema, forgotPasswordSchema, loginSchema, resetPasswordSchema } from '../schemas/auth.schema';
+import { changePasswordHandler, forgotPasswordHandler, loginHandler, logoutHandler, meHandler, refreshHandler, resetPasswordHandler } from '../controllers/auth.controller';
 
 const router = Router();
 
@@ -21,5 +21,9 @@ router.get('/me', authenticate, userLimiter, meHandler);
 router.put('/password', authenticate, userLimiter, validate({ body: changePasswordSchema }), changePasswordHandler);
 
 router.post('/password/forgot', forgotPasswordLimiter, validate({ body: forgotPasswordSchema }), forgotPasswordHandler);
+
+// No dedicated limiter: the contract only limits login and forgot password, and a 256-bit
+// token cannot be guessed. The global apiLimiter (app.ts) still applies
+router.post('/password/reset', apiLimiter, validate({ body: resetPasswordSchema }), resetPasswordHandler);
 
 export default router;
