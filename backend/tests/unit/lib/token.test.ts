@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateToken, hashToken, REFRESH_TOKEN_TTL_MS } from '../../../src/lib/token'; 
+import { generateToken, hashToken, REFRESH_TOKEN_TTL_MS, RESET_TOKEN_TTL_MS } from '../../../src/lib/token';
 
 const token = 'testtestetstest'; 
 
@@ -37,6 +37,12 @@ describe('generateToken', () => {
 
 describe('REFRESH_TOKEN_TTL_MS', () => {
     it('lasts 7 days', () => {
-        expect(REFRESH_TOKEN_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000); 
-    }); 
-}); 
+        expect(REFRESH_TOKEN_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    });
+});
+
+describe('RESET_TOKEN_TTL_MS', () => {
+    it('lasts 15 minutes', () => {
+        expect(RESET_TOKEN_TTL_MS).toBe(15 * 60 * 1000);
+    });
+});

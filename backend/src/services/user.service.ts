@@ -6,6 +6,7 @@ import { isManagerOfEmployee, isSelf, managedTeamIds, resolveUserId, type Caller
 import type { CreateUserInput, ListUsersQuery, UpdateUserInput } from '../schemas/user.schema';
 import { generateToken, hashToken } from '../lib/token';
 import { escapeLike } from '../lib/escapeLike';
+import { frontendUrl } from '../lib/config';
 
 // Roles each caller may assign (contract, section 2); admin is never assignable
 const CREATABLE_ROLES: Record<UserRole, UserRole[]> = {
@@ -16,15 +17,6 @@ const CREATABLE_ROLES: Record<UserRole, UserRole[]> = {
 
 // The link is single-use (used_at, see /auth/password/reset) and expires after 72 hours
 const SETUP_TOKEN_TTL_MS = 72 * 60 * 60 * 1000;
-
-// Read at call time; a missing or invalid value must fail before anything is written
-const getFrontendUrl = () => {
-  const value = process.env.FRONTEND_URL;
-  if (!value || !URL.canParse(value)) {
-    throw new Error('FRONTEND_URL must be set to a valid URL');
-  }
-  return value.replace(/\/+$/, '');
-};
 
 const forbidden = () => new AppError(403, 'FORBIDDEN', 'Droits insuffisants pour cette action');
 
@@ -73,7 +65,7 @@ export async function createUser(actor: Caller, input: CreateUserInput) {
     throw new AppError(403, 'FORBIDDEN', `Vous ne pouvez pas créer un utilisateur de rôle ${input.role}`);
   }
 
-  const frontendUrl = getFrontendUrl();
+  const baseUrl = frontendUrl();
 
   // The raw token is only sent in the link; the database keeps its SHA-256 hash
   const token = generateToken(); 
@@ -101,7 +93,7 @@ export async function createUser(actor: Caller, input: CreateUserInput) {
   // The user exists now: a mail failure must not turn into a 500 (a retry would hit a 409).
   // The user can still get a new link through "forgot password"
   try {
-    await sendSetupLink(user.email, `${frontendUrl}/reset-password?token=${token}`);
+    await sendSetupLink(user.email, `${baseUrl}/reset-password?token=${token}`);
   } catch (err) {
     // Never log the link: it carries the token
     console.error(`[mail] Setup link not sent to user ${user.id}`, err);

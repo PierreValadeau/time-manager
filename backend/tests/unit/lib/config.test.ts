@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { anomalyThresholdHours, appTimezone } from '../../../src/lib/config';
+import { anomalyThresholdHours, appTimezone, frontendUrl } from '../../../src/lib/config';
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -43,5 +43,27 @@ describe('appTimezone', () => {
   it('throws on an unknown timezone', () => {
     vi.stubEnv('APP_TIMEZONE', 'Mars/Olympus');
     expect(() => appTimezone()).toThrow('APP_TIMEZONE');
+  });
+});
+
+describe('frontendUrl', () => {
+  it('reads FRONTEND_URL', () => {
+    vi.stubEnv('FRONTEND_URL', 'http://front.test');
+    expect(frontendUrl()).toBe('http://front.test');
+  });
+
+  // The links append /reset-password: a trailing slash would give //reset-password
+  it('strips the trailing slashes', () => {
+    vi.stubEnv('FRONTEND_URL', 'http://front.test//');
+    expect(frontendUrl()).toBe('http://front.test');
+  });
+
+  it.each([
+    ['missing', undefined],
+    ['empty', ''],
+    ['not a URL', 'not a url'],
+  ])('throws when the variable is %s', (_label, value) => {
+    vi.stubEnv('FRONTEND_URL', value);
+    expect(() => frontendUrl()).toThrow('FRONTEND_URL');
   });
 });

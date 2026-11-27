@@ -3,9 +3,11 @@ import prisma from '../lib/prisma';
 import AppError from '../errors/AppError';
 import { hashPassword, verifyPassword } from '../lib/password';
 import { signAccessToken } from '../lib/jwt';
-import { hashToken, generateToken, REFRESH_TOKEN_TTL_MS } from '../lib/token'; 
+import { frontendUrl } from '../lib/config';
+import { hashToken, generateToken, REFRESH_TOKEN_TTL_MS, RESET_TOKEN_TTL_MS } from '../lib/token';
+import { sendResetLink } from './mail.service';
 import { toFullUser, userSelect } from './user.service';
-import type { ChangePasswordInput, LoginInput } from '../schemas/auth.schema';
+import type { ChangePasswordInput, LoginInput, ForgotPasswordInput, ResetPasswordInput } from '../schemas/auth.schema';
 
 
 // db: pass the transaction client (tx) to write inside a transaction, defaults to prisma
@@ -13,7 +15,7 @@ async function issueRefreshToken(userId: string, db: Prisma.TransactionClient = 
     const token = generateToken();
     await db.refreshToken.create({
         data: { userId, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
-    }); 
+    });
 
     return token; 
 }
@@ -34,6 +36,10 @@ const wrongCurrentPassword = () =>
 
 const invalidSession = () => 
     new AppError(401, 'UNAUTHENTICATED', 'Session absente ou expirée');
+
+// Same error for every case: the reason a link is refused is not disclosed
+const invalidResetLink = () =>
+    new AppError(400, 'VALIDATION_ERROR', 'Lien invalide ou expiré', [{ field: 'token', issue: 'invalid' }]);
 
 //compare against when no usable hash exists
 const dummyHash = hashPassword('dummy-password'); 
@@ -154,5 +160,87 @@ export async function changePassword(userId: string, { currentPassword, newPassw
 
         const refreshToken = await issueRefreshToken(userId, tx);
         return { refreshToken };
+    });
+}
+
+// POST /auth/password/forgot
+export async function forgotPassword({ email }: ForgotPasswordInput) {
+    const baseUrl = frontendUrl();
+
+    const user = await prisma.user.findUnique({
+        where: { email },
+        select: {
+            id: true,
+            email: true,
+            deletedAt: true,
+        },
+    });
+
+    // Always 202, we do not disclose whether an account exists
+    if (!user || user.deletedAt) return;
+
+    const token = generateToken();
+
+    await prisma.$transaction(async tx => {
+        // Only the latest link works: any link still unused is invalidated
+        await tx.passwordResetToken.updateMany({
+            where: { userId: user.id, usedAt: null },
+            data: { usedAt: new Date() },
+        });
+
+        await tx.passwordResetToken.create({
+            data: { userId: user.id, tokenHash: hashToken(token), expiresAt: new Date(Date.now() + RESET_TOKEN_TTL_MS) },
+        });
+    });
+
+    // The 202 is already sent: a mail failure must not throw, nobody would receive the error.
+    // The user can request a new link through "forgot password"
+    try {
+        await sendResetLink(user.email, `${baseUrl}/reset-password?token=${token}`);
+    } catch (err) {
+        // Never log the link: it carries the token
+        console.error(`[mail] Reset link not sent to user ${user.id}`, err);
+    }
+}
+
+// POST /auth/password/reset
+export async function resetPassword({ token, newPassword }: ResetPasswordInput) {
+    const row = await prisma.passwordResetToken.findUnique({
+        where: { tokenHash: hashToken(token) },
+        include: {
+            user: {
+                select: {
+                    deletedAt: true,
+                }
+            }
+        }
+    });
+
+    if (!row || row.usedAt || row.expiresAt < new Date() || row.user.deletedAt) throw invalidResetLink();
+
+    const passwordHash = await hashPassword(newPassword);
+
+    await prisma.$transaction(async tx => {
+        // usedAt: null in the filter: of two concurrent resets with the same link, only one gets count === 1
+        const consumed = await tx.passwordResetToken.updateMany({
+            where: { id: row.id, usedAt: null },
+            data: { usedAt: new Date() },
+        });
+
+        if (consumed.count !== 1) throw invalidResetLink();
+
+        // Any other link still open must not work once the password is changed
+        await tx.passwordResetToken.updateMany({
+            where: { userId: row.userId, usedAt: null },
+            data: { usedAt: new Date() },
+        });
+
+        await tx.user.update({
+            where: { id: row.userId },
+            data: { passwordHash },
+        });
+
+        // Contract, section 3: a password reset closes every session
+        await revokeAllRefreshTokens(row.userId, tx);
     });
 }

@@ -1,9 +1,11 @@
 import { z } from 'zod'; 
 
+// Normalized so it matches the email stored in the database
+export const emailSchema = z.string().trim().toLowerCase().max(255).pipe(z.email());
+
 // POST /auth/login
 export const loginSchema = z.object({
-    //normalize
-    email: z.string().trim().toLowerCase().max(255).pipe(z.email()),
+    email: emailSchema,
     //we just check the password 
     password: z.string().min(1).max(128),
 });
@@ -17,5 +19,18 @@ export const changePasswordSchema = z.object({
     newPassword: passwordSchema,
 });
 
+// POST /auth/password/forgot
+export const forgotPasswordSchema = z.object({
+    email: emailSchema,
+});
+
+// POST /auth/password/reset
+export const resetPasswordSchema = z.object({
+    token: z.string().min(1).max(256),
+    newPassword: passwordSchema,
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
