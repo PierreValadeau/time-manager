@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import AppError from '../errors/AppError';
-import { login, refresh, logout, getMe, changePassword } from '../services/auth.service'; 
+import { login, refresh, logout, getMe, changePassword, forgotPassword } from '../services/auth.service'; 
 import { ACCESS_TOKEN_COOKIE } from "../lib/jwt";
 import { REFRESH_TOKEN_COOKIE, accessCookieOptions, clearAccessCookieOptions, clearRefreshCookieOptions, refreshCookieOptions } from "../lib/cookie";
 
@@ -49,4 +49,11 @@ export const changePasswordHandler: RequestHandler = async (req, res) => {
     res.cookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshCookieOptions);
 
     res.sendStatus(204);
+}
+
+// POST /auth/password/forgot
+export const forgotPasswordHandler: RequestHandler = (req, res) => {
+    // Reply before any work: the response time must not reveal whether the account exists
+    res.sendStatus(202);
+    forgotPassword(req.body).catch(err => console.error('[auth] Forgot password failed', err));
 }
