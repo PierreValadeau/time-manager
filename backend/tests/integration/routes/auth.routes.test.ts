@@ -7,13 +7,14 @@ import jwt from 'jsonwebtoken';
 import { verifyPassword } from '../../../src/lib/password';
 import { verifyAccessToken, signAccessToken } from '../../../src/lib/jwt';
 import { hashToken } from '../../../src/lib/token';
-import { authLimiter } from '../../../src/middlewares/rateLimit';
+import { authLimiter, forgotPasswordLimiter } from '../../../src/middlewares/rateLimit';
 
 // Integration test: the real app over HTTP, with only the database and bcrypt mocked
 vi.mock('../../../src/lib/prisma', () => {
   const db = {
     user: { findUnique: vi.fn(), update: vi.fn() },
     refreshToken: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
+    passwordResetToken: { create: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn() },
     $transaction: vi.fn(),
   };
   db.$transaction.mockImplementation((cb: (tx: typeof db) => unknown) => cb(db));
@@ -24,11 +25,12 @@ vi.mock('../../../src/lib/password', () => ({
   verifyPassword: vi.fn(),
 }));
 
-// Only authLimiter is bypassed: it would block this file after 5 logins. It is tested in rateLimit.test.ts.
-// A spy, so the tests can check which routes go through it
+// Only the 5-per-15-minutes limiters are bypassed: they would block this file after 5 calls.
+// They are tested in rateLimit.test.ts. Spies, so the tests can check which routes go through them
 vi.mock('../../../src/middlewares/rateLimit', async importOriginal => ({
   ...(await importOriginal<typeof import('../../../src/middlewares/rateLimit')>()),
   authLimiter: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
+  forgotPasswordLimiter: vi.fn((_req: unknown, _res: unknown, next: () => void) => next()),
 }));
 
 
@@ -445,6 +447,147 @@ describe('PUT /api/v1/auth/password', () => {
     it('does not go through authLimiter, shared with login and keyed by IP', async () => {
       await putPassword(change, session);
       expect(authLimiter).not.toHaveBeenCalled();
+    });
+  });
+});
+
+// POST /api/v1/auth/password/forgot and /reset over HTTP, without any cookie
+const postPassword = (path: 'forgot' | 'reset') => async (payload: unknown) => {
+  const res = await fetch(`${baseUrl}/api/v1/auth/password/${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return { status: res.status, cookies: res.headers.getSetCookie(), text: await res.text() };
+};
+const forgot = postPassword('forgot');
+const reset = postPassword('reset');
+
+const findResetMock = prisma.passwordResetToken.findUnique as unknown as Mock;
+const updateResetMock = prisma.passwordResetToken.updateMany as unknown as Mock;
+
+describe('POST /api/v1/auth/password/forgot', () => {
+  beforeEach(() => {
+    vi.stubEnv('FRONTEND_URL', 'http://front.test');
+    findUniqueMock.mockResolvedValue({ id: '001', email: input.email, deletedAt: null });
+    updateResetMock.mockResolvedValue({ count: 0 });
+    // The real sendResetLink logs the link outside production
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('success', () => {
+    it('answers 202 with an empty body, without a session', async () => {
+      const res = await forgot({ email: input.email });
+      expect(res.status).toBe(202);
+      expect(res.text).toBe('');
+    });
+
+    it('answers exactly the same for an unknown email', async () => {
+      const known = await forgot({ email: input.email });
+      findUniqueMock.mockResolvedValue(null);
+      const unknown = await forgot({ email: 'nobody@trinity.com' });
+      expect(unknown).toEqual(known);
+    });
+
+    // An await in the handler would make the response time reveal whether the account exists
+    it('answers 202 before the work is done', async () => {
+      findUniqueMock.mockReturnValueOnce(new Promise(() => {}));
+      const res = await forgot({ email: input.email });
+      expect(res.status).toBe(202);
+    });
+
+    it('still answers 202 when the work fails, and logs the error', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      findUniqueMock.mockRejectedValueOnce(new Error('db down'));
+
+      const res = await forgot({ email: input.email });
+
+      expect(res.status).toBe(202);
+      await vi.waitFor(() => {
+        expect(error).toHaveBeenCalledWith('[auth] Forgot password failed', expect.any(Error));
+      });
+    });
+
+    it('looks up the email normalized by the schema', async () => {
+      await forgot({ email: '  Test.Testy@Trinity.COM ' });
+      await vi.waitFor(() => {
+        expect(findUniqueMock.mock.lastCall![0].where).toEqual({ email: input.email });
+      });
+    });
+
+    it('goes through forgotPasswordLimiter, not authLimiter', async () => {
+      await forgot({ email: input.email });
+      expect(forgotPasswordLimiter).toHaveBeenCalled();
+      expect(authLimiter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('failures', () => {
+    it('answers 400 on an invalid email, before reading the database', async () => {
+      const res = await forgot({ email: 'not-an-email' });
+      expect(res.status).toBe(400);
+      const { error } = JSON.parse(res.text);
+      expect(error.code).toBe('VALIDATION_ERROR');
+      expect(error.details).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'email' })]));
+      expect(findUniqueMock).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('POST /api/v1/auth/password/reset', () => {
+  const resetBody = { token: 'raw-reset-token', newPassword: 'new-password-12' };
+
+  beforeEach(() => {
+    findResetMock.mockResolvedValue({
+      id: 'r1', userId: '001', usedAt: null,
+      expiresAt: new Date(Date.now() + 60 * 1000),
+      user: { deletedAt: null },
+    });
+    updateResetMock.mockResolvedValue({ count: 1 });
+    revokeTokenMock.mockResolvedValue({ count: 1 });
+  });
+
+  describe('success', () => {
+    it('answers 204 with an empty body and sets no cookie: the user logs in again', async () => {
+      const res = await reset(resetBody);
+      expect(res.status).toBe(204);
+      expect(res.text).toBe('');
+      expect(res.cookies).toHaveLength(0);
+    });
+
+    it('goes through neither authLimiter nor forgotPasswordLimiter', async () => {
+      await reset(resetBody);
+      expect(authLimiter).not.toHaveBeenCalled();
+      expect(forgotPasswordLimiter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('failures', () => {
+    it('answers 400 "Lien invalide ou expiré" on the token field for an unknown token', async () => {
+      findResetMock.mockResolvedValue(null);
+      const res = await reset(resetBody);
+      expect(res.status).toBe(400);
+      expect(JSON.parse(res.text).error).toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: 'Lien invalide ou expiré',
+        details: [{ field: 'token', issue: 'invalid' }],
+      });
+    });
+
+    it.each([
+      ['a new password under 12 characters', { ...resetBody, newPassword: 'a'.repeat(11) }, 'newPassword'],
+      ['a missing token', { newPassword: resetBody.newPassword }, 'token'],
+    ])('answers 400 on %s, before reading the database', async (_label, payload, field) => {
+      const res = await reset(payload);
+      expect(res.status).toBe(400);
+      const { error } = JSON.parse(res.text);
+      expect(error.code).toBe('VALIDATION_ERROR');
+      expect(error.details).toEqual(expect.arrayContaining([expect.objectContaining({ field })]));
+      expect(findResetMock).not.toHaveBeenCalled();
     });
   });
 });
