@@ -54,7 +54,7 @@ export const changePasswordHandler: RequestHandler = async (req, res) => {
 // POST /auth/password/forgot
 export const forgotPasswordHandler: RequestHandler = (req, res) => {
     // Reply before any work: the response time must not reveal whether the account exists
-    res.sendStatus(202);
+    res.status(202).end();
     forgotPassword(req.body).catch(err => console.error('[auth] Forgot password failed', err));
 }
 
