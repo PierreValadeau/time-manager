@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'; 
-import { changePasswordSchema, loginSchema, passwordSchema } from '../../../src/schemas/auth.schema';
+import {
+    changePasswordSchema,
+    forgotPasswordSchema,
+    loginSchema,
+    passwordSchema,
+    resetPasswordSchema,
+} from '../../../src/schemas/auth.schema';
 
 const valid = { email: 'test@trinity.com', password: 'secret' }; 
 
@@ -54,5 +60,46 @@ describe('changePasswordSchema', () => {
         ['a missing newPassword', { currentPassword: validChange.currentPassword }],
     ])('rejects %s', (_label, input) => {
         expect(changePasswordSchema.safeParse(input).success).toBe(false);
+    });
+});
+
+describe('forgotPasswordSchema', () => {
+    // Same normalization as the login: otherwise a mistyped case would never find the account
+    it('lowercases and trims the email', () => {
+        expect(forgotPasswordSchema.parse({ email: '  Jean@Mail.COM ' }).email).toBe('jean@mail.com');
+    });
+
+    it.each([
+        ['a missing email', {}],
+        ['an invalid email', { email: 'not-an-email' }],
+    ])('rejects %s on the email field', (_label, input) => {
+        const result = forgotPasswordSchema.safeParse(input);
+        expect(result.success).toBe(false);
+        expect(result.error?.issues[0].path).toEqual(['email']);
+    });
+});
+
+describe('resetPasswordSchema', () => {
+    const validReset = { token: 'a'.repeat(43), newPassword: 'a'.repeat(12) };
+
+    it.each([
+        ['a token from generateToken', validReset],
+        ['a 256-character token', { ...validReset, token: 'a'.repeat(256) }],
+        // Validity is checked by the service, so an unknown link gets "Lien invalide ou expiré"
+        ['a short but non-empty token', { ...validReset, token: 'abc' }],
+    ])('accepts %s', (_label, input) => {
+        expect(resetPasswordSchema.safeParse(input).success).toBe(true);
+    });
+
+    it.each([
+        ['an empty token', { ...validReset, token: '' }, 'token'],
+        ['a 257-character token', { ...validReset, token: 'a'.repeat(257) }, 'token'],
+        ['a missing token', { newPassword: validReset.newPassword }, 'token'],
+        ['a new password under 12 characters', { ...validReset, newPassword: 'a'.repeat(11) }, 'newPassword'],
+        ['a missing newPassword', { token: validReset.token }, 'newPassword'],
+    ])('rejects %s on the %s field', (_label, input, field) => {
+        const result = resetPasswordSchema.safeParse(input);
+        expect(result.success).toBe(false);
+        expect(result.error?.issues[0].path).toEqual([field]);
     });
 });

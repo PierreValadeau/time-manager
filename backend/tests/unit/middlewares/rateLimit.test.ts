@@ -6,6 +6,7 @@ import {
   API_LIMIT_PER_MINUTE,
   apiLimiter,
   authLimiter,
+  forgotPasswordLimiter,
   USER_LIMIT_PER_MINUTE,
   userLimiter,
 } from '../../../src/middlewares/rateLimit';
@@ -30,7 +31,11 @@ const buildApp = () => {
 
   app.post('/login', authLimiter, (_req, _res, next) => {
     next(new AppError(401, 'UNAUTHENTICATED', 'Email ou mot de passe incorrect')); 
-  }); 
+  });
+
+  app.post('/forgot', forgotPasswordLimiter, (_req, res) => {
+    res.sendStatus(202);
+  });
 
   app.use(errorHandler);
   return app;
@@ -109,6 +114,27 @@ describe('authLimiter', () => {
     const res = await fetch(`${baseUrl}/login`, { method: 'POST' }); 
     expect(res.status).toBe(429); 
     expect((await res.json()).error.code).toBe('RATE_LIMITED'); 
-    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(14 * 60); 
-  }); 
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(14 * 60);
+  });
+});
+
+describe('forgotPasswordLimiter', () => {
+  // A single test: both limiters count per IP and cannot be reset between tests from here
+  it('counts its own 5 attempts per 15 minutes, separately from authLimiter', async () => {
+    // Login blocked first: a shared counter would refuse "forgot password" right away
+    let login = 0;
+    for (let i = 0; i < 6; i++) {
+      login = (await fetch(`${baseUrl}/login`, { method: 'POST' })).status;
+    }
+    expect(login).toBe(429);
+
+    for (let i = 0; i < 5; i++) {
+      expect((await fetch(`${baseUrl}/forgot`, { method: 'POST' })).status).toBe(202);
+    }
+
+    const res = await fetch(`${baseUrl}/forgot`, { method: 'POST' });
+    expect(res.status).toBe(429);
+    expect((await res.json()).error.code).toBe('RATE_LIMITED');
+    expect(Number(res.headers.get('retry-after'))).toBeGreaterThan(14 * 60);
+  });
 }); 
